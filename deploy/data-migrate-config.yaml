@@ -1,0 +1,24 @@
+report_config:
+  format: csv # csv, md or html
+  bucket: test
+  s3_config:
+    access_key: testy
+    secret_key: testy
+    region: us-east-1
+    endpoint: http://10.3.8.31:80
+    skipSSLverify: true
+
+global_config:
+  source_fs_type: gpfs
+  target_fs_type: yrfs_ec 
+  tasks_file: deploy/data_sources.txt
+  # check_source_entry: false # Check if the source exists and whether it is a file or directory
+  #
+  # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
+  rclone_flags:
+    checkers: 128
+    transfers: 128
+    log_level: INFO
+    local_no_set_modtime: true
+    size_only: true
+    dryrun: true
