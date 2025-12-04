@@ -6,12 +6,23 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/goccy/go-yaml"
 	log "github.com/sirupsen/logrus"
 )
 
+type MigrationConf struct {
+	ReportConfig *ReportConfiguration `yaml:"report_config" json:"report_config"`
+	GlobalConfig *GlobalConfiguration `yaml:"global_config" json:"global_config"`
+}
+
+type GlobalConfiguration struct {
+	SourceFsType string       `yaml:"source_fs_type" json:"source_fs_type"` // cpfs
+	TargetFsType string       `yaml:"target_fs_type" json:"target_fs_type"` // yrfs_ec
+	TasksFile    string       `yaml:"tasks_file" json:"tasks_file"`         // eg: deploy/data_sources.txt
+	RcloneFlags  *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
+	// CheckSourceEntry bool         `yaml:"check_source_entry" json:"check_source_entry"` // Check if the source exists and whether it is a file or directory
+}
 type RcloneFlags struct {
 	Checkers          int    `yaml:"checkers" json:"checkers"`
 	Transfers         int    `yaml:"transfers" json:"transfers"`
@@ -34,27 +45,6 @@ type ReportConfiguration struct {
 	Format   string           `yaml:"format" json:"format"` // md, csv or html
 	Bucket   string           `yaml:"bucket" json:"bucket"` // report will upload to s3 bucket to persist
 	S3Config *S3Configuration `yaml:"s3_config" json:"s3_config"`
-}
-
-// BenchResult is the struct that will contain the benchmark results from a
-// worker after it has finished its benchmark
-type BenchmarkResult struct {
-	TestName             string
-	SuccessfulOperations float64
-	FailedOperations     float64
-	Workers              float64
-	ParallelClients      float64
-	Bytes                float64
-	// BandwidthAvg is the amount of Bytes per second of runtime
-	BandwidthAvg       float64
-	LatencyAvg         float64
-	GenBytesLatencyAvg float64
-	Duration           time.Duration
-	// Type               OpType
-	FileSize  uint64
-	Depth     uint64
-	Width     uint64
-	BlockSize uint64
 }
 
 // CheckSetConfig checks the global config
@@ -192,17 +182,4 @@ func ParseTaskFile(configPath string) ([]*MigrationTask, error) {
 	}
 
 	return tasks, nil
-}
-
-type MigrationConf struct {
-	ReportConfig *ReportConfiguration `yaml:"report_config" json:"report_config"`
-	GlobalConfig *GlobalConfiguration `yaml:"global_config" json:"global_config"`
-}
-
-type GlobalConfiguration struct {
-	SourceFsType string       `yaml:"source_fs_type" json:"source_fs_type"` // cpfs
-	TargetFsType string       `yaml:"target_fs_type" json:"target_fs_type"` // yrfs_ec
-	TasksFile    string       `yaml:"tasks_file" json:"tasks_file"`         // eg: deploy/data_sources.txt
-	RcloneFlags  *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
-	// CheckSourceEntry bool         `yaml:"check_source_entry" json:"check_source_entry"` // Check if the source exists and whether it is a file or directory
 }

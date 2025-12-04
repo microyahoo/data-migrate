@@ -78,7 +78,7 @@ func run() {
 
 	server, err := NewServer(configFile)
 	if err != nil {
-		log.Fatalf("failed to create server", err)
+		log.Fatalf("failed to create server: %s", err)
 	}
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
@@ -286,7 +286,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 	}
 
 	err = csvwriter.Write([]string{
-		fmt.Sprintf("%s", result.TaskID),
+		fmt.Sprintf("%d", result.TaskID),
 		result.SourceDir,
 		result.TargetDir,
 		result.ClientID,
@@ -359,7 +359,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 		})
 		for _, result := range results {
 			t.AppendRow(table.Row{
-				fmt.Sprintf("%s", result.TaskID),
+				fmt.Sprintf("%d", result.TaskID),
 				result.SourceDir,
 				result.TargetDir,
 				result.ClientID,
