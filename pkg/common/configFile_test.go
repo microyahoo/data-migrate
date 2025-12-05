@@ -46,7 +46,7 @@ global_config:
   source_fs_type: gpfs
   target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt
-  # check_source_entry: false # Check if the source exists and whether it is a file or directory
+  check_source_entry: true # Check if the source exists and whether it is a file or directory
   #
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
   rclone_flags:
@@ -69,9 +69,10 @@ global_config:
 				},
 			},
 			GlobalConfig: &GlobalConfiguration{
-				SourceFsType: "gpfs",
-				TargetFsType: "yrfs_ec",
-				TasksFile:    "deploy/data_sources.txt",
+				SourceFsType:     "gpfs",
+				TargetFsType:     "yrfs_ec",
+				TasksFile:        "deploy/data_sources.txt",
+				CheckSourceEntry: true,
 				RcloneFlags: &RcloneFlags{
 					Checkers:          128,
 					Transfers:         64,
@@ -127,6 +128,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   "source_fs_type": "gpfs",
   "target_fs_type": "yrfs_ec",
   "tasks_file": "deploy/data_sources.txt",
+  "check_source_entry": "true",
   "rclone_flags":  {
     "checkers": 128,
 	"transfers": 64,
@@ -149,9 +151,10 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				},
 			},
 			GlobalConfig: &GlobalConfiguration{
-				SourceFsType: "gpfs",
-				TargetFsType: "yrfs_ec",
-				TasksFile:    "deploy/data_sources.txt",
+				SourceFsType:     "gpfs",
+				TargetFsType:     "yrfs_ec",
+				TasksFile:        "deploy/data_sources.txt",
+				CheckSourceEntry: true,
 				RcloneFlags: &RcloneFlags{
 					Checkers:          128,
 					Transfers:         64,

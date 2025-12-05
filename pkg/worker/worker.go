@@ -145,19 +145,19 @@ func (w *Worker) loadDirectories(task *common.MigrationTask) (includeFile string
 	if task.FileListPath == "" {
 		return "", "", nil
 	}
-	// 读取原始迁移文件或目录列表
+	// read original migration files or directory lists
 	file, err := os.Open(task.FileListPath)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to open list file: %v", err)
 	}
 	defer file.Close()
 
-	var directories []string
+	var entries []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		dir := strings.TrimSpace(scanner.Text())
 		if dir != "" {
-			directories = append(directories, dir)
+			entries = append(entries, dir)
 		}
 	}
 
@@ -165,34 +165,39 @@ func (w *Worker) loadDirectories(task *common.MigrationTask) (includeFile string
 		return "", "", fmt.Errorf("error reading list file: %v", err)
 	}
 
-	// 创建临时文件用于 include-from
+	// create a temp file for include-from file
 	tempFile, err := os.CreateTemp("", fmt.Sprintf("include_%d_*.txt", task.ID))
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create temp file: %v", err)
 	}
 	defer tempFile.Close()
 
-	// 处理每个路径并写入临时文件
-	for _, path := range directories {
-		fullPath := filepath.Join(task.SourceDir, path)
-
-		// 检查是文件还是目录
-		info, err := os.Stat(fullPath)
-		if err != nil {
-			log.Errorf("Warning: Cannot stat %s: %v", fullPath, err)
-			continue
-		}
-
+	for _, path := range entries {
 		var includePattern string
-		if info.IsDir() {
-			// 目录：添加 /** 后缀
-			includePattern = fmt.Sprintf("/%s/**", strings.TrimPrefix(path, "/"))
+
+		if task.CheckSourceEntry {
+			fullPath := filepath.Join(task.SourceDir, path)
+
+			// check file or directory
+			info, err := os.Stat(fullPath)
+			if err != nil {
+				log.Errorf("Warning: Cannot stat %s: %v", fullPath, err)
+				continue
+			}
+
+			if info.IsDir() {
+				// directories: add prefix / and append /** suffix
+				includePattern = fmt.Sprintf("/%s/**", strings.TrimPrefix(path, "/"))
+			} else {
+				// file: only add prefix /
+				includePattern = fmt.Sprintf("/%s", strings.TrimPrefix(path, "/"))
+			}
 		} else {
-			// 文件：只添加前缀 /
-			includePattern = fmt.Sprintf("/%s", strings.TrimPrefix(path, "/"))
+			log.Debug("If not checking each entry, treat all as directories")
+			includePattern = fmt.Sprintf("/%s/**", strings.TrimPrefix(path, "/"))
 		}
 
-		// 写入临时文件
+		// write include patterns to temp file
 		if _, err := tempFile.WriteString(includePattern + "\n"); err != nil {
 			return "", "", fmt.Errorf("failed to write to temp file: %v", err)
 		}
@@ -200,7 +205,7 @@ func (w *Worker) loadDirectories(task *common.MigrationTask) (includeFile string
 
 	includeFile = tempFile.Name()
 	log.Infof("Created include file for task %d: %s with %d patterns",
-		task.ID, includeFile, len(directories))
+		task.ID, includeFile, len(entries))
 
 	s3IncludeFileKey = fmt.Sprintf("rclone/include-files/%d/%s", task.Timestamp,
 		filepath.Base(includeFile))

@@ -10,9 +10,9 @@ report_config:
 
 global_config:
   source_fs_type: gpfs
-  target_fs_type: yrfs_ec 
+  target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt
-  # check_source_entry: false # Check if the source exists and whether it is a file or directory
+  check_source_entry: true # Check if the source exists and whether it is a file or directory
   #
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
   rclone_flags:

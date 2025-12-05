@@ -17,11 +17,11 @@ type MigrationConf struct {
 }
 
 type GlobalConfiguration struct {
-	SourceFsType string       `yaml:"source_fs_type" json:"source_fs_type"` // cpfs
-	TargetFsType string       `yaml:"target_fs_type" json:"target_fs_type"` // yrfs_ec
-	TasksFile    string       `yaml:"tasks_file" json:"tasks_file"`         // eg: deploy/data_sources.txt
-	RcloneFlags  *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
-	// CheckSourceEntry bool         `yaml:"check_source_entry" json:"check_source_entry"` // Check if the source exists and whether it is a file or directory
+	SourceFsType     string       `yaml:"source_fs_type" json:"source_fs_type"` // cpfs
+	TargetFsType     string       `yaml:"target_fs_type" json:"target_fs_type"` // yrfs_ec
+	TasksFile        string       `yaml:"tasks_file" json:"tasks_file"`         // eg: deploy/data_sources.txt
+	RcloneFlags      *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
+	CheckSourceEntry bool         `yaml:"check_source_entry" json:"check_source_entry"` // Check if the source exists and whether it is a file or directory
 }
 type RcloneFlags struct {
 	Checkers          int    `yaml:"checkers" json:"checkers"`
