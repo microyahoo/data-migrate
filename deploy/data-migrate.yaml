@@ -1,20 +1,4 @@
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  namespace: data-migrate
-  name: csi-cephfs-pvc
-spec:
-  volumeMode: Filesystem
-  #volumeMode: Block
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 800Ti
-  storageClassName: csi-cephfs-sc
-
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -80,7 +64,7 @@ metadata:
   namespace: data-migrate
   labels:
     k8s-app: data-migrate-worker
-spec: 
+spec:
   selector:
     matchLabels:
       name: data-migrate-worker
@@ -106,10 +90,6 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          - name: FSBENCH_IN_CONTAINER
-            value: "true"
-          - name: PROMETHEUSPORT
-            value: "8888"
           - name: SERVERADDRESS
             value: "data-migrate-server:2000"
           - name: DEBUG
@@ -180,196 +160,20 @@ data:
         access_key: testy
         secret_key: testy
         region: us-east-1
-        endpoint: http://10.3.9.221:80
+        endpoint: http://10.3.8.32:80
         skipSSLverify: true
 
     global_config:
-      reorder_tasks: true # having a different node read/stat back data than wrote it
-      anchor: /volume
-      direct_io: true
-      threads: [8, 16, 32, 64, 128, 256]
-      operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-      workers: 7
-
-    tests:
-      - name: 4k
-        fsd:
-          # anchor: /volume  # override global value
-          # direct_io: true  # override global value
-          depth: 6
-          width: 3
-          files: 2000
-          size: 4k
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 4k
-          threads: [16, 32, 64, 128, 256]   # override global value
-        clear_dirs: true
-      - name: 8k
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 2000
-          size: 8k
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 8k
-          threads: [16, 32, 64, 128, 256]
-        clear_dirs: true
-      # - name: 16k
-      #   fsd:
-      #     # anchor: /volume
-      #     # direct_io: true
-      #     depth: 5
-      #     width: 3
-      #     files: 200000
-      #     size: 16k
-      #   fwd:
-      #     # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-      #     block_size: 16k
-      #     threads: [16, 32, 64, 128, 256]
-      #   clear_dirs: true
-      - name: 32k
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 2000
-          size: 32k
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 32k
-          threads: [16, 32, 64, 128, 256]
-        clear_dirs: true
-      # - name: 64k
-      #   fsd:
-      #     # anchor: /volume
-      #     # direct_io: true
-      #     depth: 2
-      #     width: 3
-      #     files: 10
-      #     size: 64k
-      #   fwd:
-      #     # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-      #     block_size: 64k
-      #     # threads: [4, 8, 16, 32, 64, 128, 256]
-      #   clear_dirs: true
-      - name: 128k
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 2000
-          size: 128k
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 128k
-          threads: [16, 32, 64, 128, 256]
-        clear_dirs: true
-      # - name: 256k
-      #   fsd:
-      #     # anchor: /volume
-      #     # direct_io: true
-      #     depth: 2
-      #     width: 3
-      #     files: 10
-      #     size: 256k
-      #   fwd:
-      #     # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-      #     block_size: 256k
-      #     # threads: [4, 8, 16, 32, 64, 128, 256]
-      #   clear_dirs: true
-      - name: 512k
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 4000
-          size: 512k
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 512k
-          threads: [16, 32, 64, 128, 256]
-        clear_dirs: true
-      - name: 1m
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 1200
-          size: 1m
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 1m
-          threads: [16, 32, 64, 128, 256]
-        clear_dirs: true
-      - name: 4m
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 1000
-          size: 4m
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 4m
-          threads: [16, 32, 64, 128, 256]
-        clear_dirs: true
-      - name: 64m
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 200
-          size: 64m
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 4m
-          threads: [16, 32, 64, 128, 256]
-        clear_dirs: true
-      - name: 256m
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 80
-          size: 256m
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 4m
-          threads: [16, 32, 64, 128, 256]
-        clear_dirs: true
-      # - name: 512m
-      #   fsd:
-      #     # anchor: /volume
-      #     # direct_io: true
-      #     depth: 2
-      #     width: 3
-      #     files: 10
-      #     size: 512m
-      #   fwd:
-      #     # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-      #     block_size: 4m
-      #     # threads: [4, 8, 16, 32, 64, 128, 256]
-      #   clear_dirs: true
-      - name: 1g
-        fsd:
-          # anchor: /volume
-          # direct_io: true
-          depth: 6
-          width: 3
-          files: 20
-          size: 1g
-        fwd:
-          # operations: ["write", "read", "stat", "delete"] # NOTE: When performing read/stat/delete operations, ensure that the file exists
-          block_size: 4m
-          threads: [16, 32, 64, 128, 256]
+      source_fs_type: gpfs
+      target_fs_type: yrfs_ec
+      tasks_file: deploy/data_sources.txt
+      # check_source_entry: false # Check if the source exists and whether it is a file or directory
+      #
+      # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
+      rclone_flags:
+        checkers: 128
+        transfers: 128
+        log_level: INFO
+        local_no_set_modtime: true
+        size_only: true
+        dryrun: true

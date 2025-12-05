@@ -82,7 +82,7 @@ func (w *Worker) Start() error {
 				break
 			}
 
-			log.Infof("Task %d completed: success=%v", task.ID, result.Success)
+			log.Infof("Task %d completed: success: %v", task.ID, result.Success)
 		}
 
 		time.Sleep(15 * time.Second)
@@ -202,7 +202,8 @@ func (w *Worker) loadDirectories(task *common.MigrationTask) (includeFile string
 	log.Infof("Created include file for task %d: %s with %d patterns",
 		task.ID, includeFile, len(directories))
 
-	s3IncludeFileKey = fmt.Sprintf("include-files/%d/%s", task.Timestamp, includeFile)
+	s3IncludeFileKey = fmt.Sprintf("rclone/include-files/%d/%s", task.Timestamp,
+		filepath.Base(includeFile))
 	if e := w.uploadFile(tempFile, task.Bucket, task.S3Config, s3IncludeFileKey); e != nil {
 		log.Warningf("failed to upload include file %s to s3: %s", includeFile, e)
 	}
@@ -211,7 +212,7 @@ func (w *Worker) loadDirectories(task *common.MigrationTask) (includeFile string
 }
 
 func (w *Worker) uploadFile(f *os.File, bucket string, s3Config *common.S3Configuration, key string) error {
-	log.Infof("Start to upload benchmark results to s3 endpoint %s", s3Config.Endpoint)
+	log.Infof("Start to upload results %s to s3 endpoint %s:%s", key, s3Config.Endpoint, bucket)
 	ctx := context.Background()
 	client, err := common.NewS3Client(ctx, s3Config.Endpoint, s3Config.AccessKey, s3Config.SecretKey,
 		s3Config.Region, s3Config.SkipSSLVerify)
@@ -285,9 +286,10 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	cmd := exec.Command("rclone", args...)
 	_, err = cmd.CombinedOutput()
 
-	s3LogFileKey := fmt.Sprintf("rclone-log-files/%d/%s", task.Timestamp, logFile)
+	var s3LogFileKey string
 	f, e := os.Open(logFile)
 	if e == nil {
+		s3LogFileKey = fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
 		if e := w.uploadFile(f, task.Bucket, task.S3Config, s3LogFileKey); e != nil {
 			log.Warningf("failed to upload rclone log file %s to s3: %s", logFile, e)
 		}

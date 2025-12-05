@@ -2,6 +2,7 @@ package main
 
 import (
 	"math/rand"
+	"os/exec"
 	"runtime"
 	"time"
 
@@ -25,6 +26,13 @@ func main() {
 func newCommand() *cobra.Command {
 	cmds := &cobra.Command{
 		Use: "data-migrate-worker",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			_, err := exec.Command("rclone", "version").CombinedOutput()
+			if err != nil {
+				return err
+			}
+			return nil
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			run()
 		},

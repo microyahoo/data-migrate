@@ -336,7 +336,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 	}
 	var timestamp = time.Now().UnixMilli()
 	outputFile := fmt.Sprintf("/tmp/data_migrate_results_%d.%s", timestamp, format)
-	log.Infof("Start to generate benchmark results to %s", outputFile)
+	log.Infof("Start to generate data migration results to %s", outputFile)
 	{
 		f, err := os.Create(outputFile)
 		if err != nil {
@@ -404,7 +404,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 	}
 
 	s3Config := s.config.ReportConfig.S3Config
-	log.Infof("Start to upload benchmark results to s3 endpoint %s", s3Config.Endpoint)
+	log.Infof("Start to upload data migration results to s3 endpoint %s", s3Config.Endpoint)
 	ctx := context.Background()
 	client, e := common.NewS3Client(ctx, s3Config.Endpoint, s3Config.AccessKey, s3Config.SecretKey,
 		s3Config.Region, s3Config.SkipSSLVerify)
@@ -420,7 +420,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 	defer f.Close()
 	_, e = client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s.config.ReportConfig.Bucket,
-		Key:    aws.String(fmt.Sprintf("data_migrate_results_%d.%s", timestamp, format)),
+		Key:    aws.String(fmt.Sprintf("rclone/reports/data_migrate_results_%d.%s", timestamp, format)),
 		Body:   f,
 	})
 	if e != nil {
