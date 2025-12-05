@@ -67,6 +67,7 @@ global_config:
   source_fs_type: gpfs
   target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt # data sources
+  check_source_entry: true # Check if the source exists and whether it is a file or directory
   rclone_flags:
     checkers: 128
     transfers: 128
