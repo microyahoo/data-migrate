@@ -15,6 +15,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/jedib0t/go-pretty/v6/text"
 	log "github.com/sirupsen/logrus"
@@ -350,6 +351,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 	defer f.Close()
 	_, e = client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s.config.ReportConfig.Bucket,
+		ACL:    types.ObjectCannedACLPublicRead,
 		Key:    aws.String(fmt.Sprintf("rclone/reports/data_migrate_results_%d.%s", timestamp, format)),
 		Body:   f,
 	})

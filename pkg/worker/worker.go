@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/microyahoo/data-migrate/pkg/common"
@@ -209,6 +211,7 @@ func (w *Worker) loadDirectories(task *common.MigrationTask) (includeFile string
 
 	s3IncludeFileKey = fmt.Sprintf("rclone/include-files/%d/%s", task.Timestamp,
 		filepath.Base(includeFile))
+	tempFile.Seek(0, io.SeekStart)
 	if e := w.uploadFile(tempFile, task.Bucket, task.S3Config, s3IncludeFileKey); e != nil {
 		log.Warningf("failed to upload include file %s to s3: %s", includeFile, e)
 	}
@@ -226,6 +229,7 @@ func (w *Worker) uploadFile(f *os.File, bucket string, s3Config *common.S3Config
 	}
 	_, err = client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &bucket,
+		ACL:    types.ObjectCannedACLPublicRead,
 		Key:    aws.String(key),
 		Body:   f,
 	})
