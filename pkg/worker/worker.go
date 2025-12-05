@@ -14,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/microyahoo/data-migrate/pkg/common"
@@ -226,6 +227,7 @@ func (w *Worker) uploadFile(f *os.File, bucket string, s3Config *common.S3Config
 	}
 	_, err = client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &bucket,
+		ACL:    types.ObjectCannedACLPublicRead,
 		Key:    aws.String(key),
 		Body:   f,
 	})
