@@ -98,3 +98,14 @@ On client machines (or multiple terminals on the same machine):
 ```bash
 ./bin/data-migrate-worker --server.address <server-ip:port>
 ```
+
+## Results
+```csv
+id,source dir,target dir,client id,duration,success,include file,log file,message
+1,/mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1/,/mnt/yrfs/public-data/training/samples/camera_1/,127.0.0.1:35272,869.222s,false,,,path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1: no such file or directory
+2,/mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_2/,/mnt/yrfs/public-data/training/samples/camera_2/,127.0.0.1:35272,276.553s,false,,,path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_2: no such file or directory
+3,/mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_3/,/mnt/yrfs/public-data/training/samples/camera_3/,127.0.0.1:35272,198.243s,false,,,path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_3: no such file or directory
+4,/root/go/src/deeproute/ops-kubeconfig/,/tmp/zhengliang,127.0.0.1:35272,367.435861ms,true,rclone/include-files/1764917063090/include_4_1574967374.txt,rclone/log-files/1764917063090/rclone_copy_1764917063090_4.txt,Migrated task 4 with include file /tmp/include_4_1574967374.txt successfully
+5,/var,/tmp/zhengliang/var,127.0.0.1:35272,264.686311ms,true,rclone/include-files/1764917063090/include_5_1484269319.txt,rclone/log-files/1764917063090/rclone_copy_1764917063090_5.txt,Migrated task 5 with include file /tmp/include_5_1484269319.txt successfully
+6,/etc/udev,/tmp/zhengliang/etc/udev,127.0.0.1:35272,211.74785ms,true,,rclone/log-files/1764917063090/rclone_copy_1764917063090_6.txt,Migrated task 6 with include file  successfully
+```
