@@ -17,12 +17,17 @@ type MigrationConf struct {
 }
 
 type GlobalConfiguration struct {
-	SourceFsType     string       `yaml:"source_fs_type" json:"source_fs_type"` // cpfs
-	TargetFsType     string       `yaml:"target_fs_type" json:"target_fs_type"` // yrfs_ec
-	TasksFile        string       `yaml:"tasks_file" json:"tasks_file"`         // eg: deploy/data_sources.txt
-	RcloneFlags      *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
-	CheckSourceEntry bool         `yaml:"check_source_entry" json:"check_source_entry"` // Check if the source exists and whether it is a file or directory
+	SourceFsType      string       `yaml:"source_fs_type" json:"source_fs_type"` // cpfs
+	TargetFsType      string       `yaml:"target_fs_type" json:"target_fs_type"` // yrfs_ec
+	TasksFile         string       `yaml:"tasks_file" json:"tasks_file"`         // eg: deploy/data_sources.txt
+	RcloneFlags       *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
+	CheckSourceEntry  bool         `yaml:"check_source_entry" json:"check_source_entry"` // Check if the source exists and whether it is a file or directory
+	FileListDir       string       `yaml:"file_list_dir" json:"file_list_dir"`
+	FileListDirFsType string       `yaml:"file_list_dir_fs_type" json:"file_list_dir_fs_type"`
+	MaxFilesPerOutput int          `yaml:"max_files_per_output" json:"max_files_per_output"`
+	Concurrency       int          `yaml:"concurrency" json:"concurrency"`
 }
+
 type RcloneFlags struct {
 	Checkers          int    `yaml:"checkers" json:"checkers"`
 	Transfers         int    `yaml:"transfers" json:"transfers"`
@@ -95,13 +100,19 @@ func LoadConfigFromFile(configFile string) *MigrationConf {
 
 // MigrationTask struct
 type MigrationTask struct {
-	ID               int    `json:"id"`                 // task id
-	SourceDir        string `json:"source_dir"`         // Source directory
-	TargetDir        string `json:"target_dir"`         // Target directory
-	FileListPath     string `json:"file_list_path"`     // File list path
-	SourceFsType     string `json:"source_fs_type"`     // gpfs
-	TargetFsType     string `json:"target_fs_type"`     // yrfs_ec
-	CheckSourceEntry bool   `json:"check_source_entry"` // Check if the source exists and whether it is a file or directory
+	ID           int    `json:"id"`             // task id
+	SourceDir    string `json:"source_dir"`     // Source directory
+	TargetDir    string `json:"target_dir"`     // Target directory
+	FileListPath string `json:"file_list_path"` // File list path
+	SourceFsType string `json:"source_fs_type"` // gpfs
+	TargetFsType string `json:"target_fs_type"` // yrfs_ec
+
+	CheckSourceEntry bool `json:"check_source_entry"` // Deprecated: Check if the source exists and whether it is a file or directory
+
+	FileListDir       string `json:"file_list_dir"`
+	FileListDirFsType string `json:"file_list_dir_fs_type"`
+	MaxFilesPerOutput int    `json:"max_files_per_output"`
+	Concurrency       int    `json:"concurrency"`
 
 	Bucket   string           `json:"bucket"` // logs will upload to s3 bucket to persist
 	S3Config *S3Configuration `json:"s3_config"`

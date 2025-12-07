@@ -113,8 +113,12 @@ func (w *Worker) checkTask(task *common.MigrationTask) error {
 	if err != nil {
 		return err
 	}
-	if st != task.SourceFsType || tt != task.TargetFsType {
-		return fmt.Errorf("actual source or target filesystem type not match(%s, %s)", st, tt)
+	ft, err := common.GetFilesystemType(task.FileListDir)
+	if err != nil {
+		return err
+	}
+	if st != task.SourceFsType || tt != task.TargetFsType || ft != task.FileListDirFsType {
+		return fmt.Errorf("actual source, target or file list directory filesystem type not match(%s, %s, %s)", st, tt, ft)
 	}
 	si, err := os.Stat(task.SourceDir)
 	if err != nil {
@@ -253,18 +257,27 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 		return result
 	}
 
-	log.Printf("Executing task %d: %s -> %s",
-		task.ID, task.SourceDir, task.TargetDir)
+	log.Printf("Executing task %d: %s -> %s with file list %s",
+		task.ID, task.SourceDir, task.TargetDir, task.FileListPath)
 
-	includeFile, s3IncludeFileKey, err := w.loadDirectories(task)
-	if err != nil {
-		result.Success = false
-		result.Message = err.Error()
-		return result
+	var (
+		fileChan <-chan string
+		err      error
+		logFiles []string
+		filesDir = filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp))
+	)
+	if task.FileListPath != "" {
+		if err = os.MkdirAll(filesDir, 0755); err != nil {
+			result.Success = false
+			result.Message = err.Error()
+			return result
+		}
+		fileChan, err = common.FindFiles(task.SourceDir, task.FileListPath,
+			0,                                /*list concurreny*/
+			filesDir,                         /*output directory*/
+			filepath.Base(task.FileListPath), /*output prefix*/
+			task.MaxFilesPerOutput /*max files per output*/)
 	}
-
-	// TODO: CreateTemp
-	logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d.txt", task.Timestamp, task.ID)
 
 	rcloneFlags := task.RcloneFlags
 	args := []string{"copy", task.SourceDir, task.TargetDir}
@@ -286,35 +299,63 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	if rcloneFlags.LogLevel != "" {
 		args = append(args, "--log-level", rcloneFlags.LogLevel)
 	}
-	if includeFile != "" {
-		args = append(args, "--include-from", includeFile)
-	}
-	args = append(args, "--log-file", logFile)
+	if task.FileListPath == "" {
+		// TODO: CreateTemp
+		logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d.log", task.Timestamp, task.ID)
+		args = append(args, "--log-file", logFile)
 
-	// --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file <log-file>
-	cmd := exec.Command("rclone", args...)
-	_, err = cmd.CombinedOutput()
+		// --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file <log-file>
+		cmd := exec.Command("rclone", args...)
+		_, err = cmd.CombinedOutput()
 
-	var s3LogFileKey string
-	f, e := os.Open(logFile)
-	if e == nil {
-		s3LogFileKey = fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
-		if e := w.uploadFile(f, task.Bucket, task.S3Config, s3LogFileKey); e != nil {
-			log.Warningf("failed to upload rclone log file %s to s3: %s", logFile, e)
+		var s3LogFileKey string
+		f, e := os.Open(logFile)
+		if e == nil {
+			s3LogFileKey = fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
+			logFiles = append(logFiles, s3LogFileKey)
+			if e := w.uploadFile(f, task.Bucket, task.S3Config, s3LogFileKey); e != nil {
+				log.Warningf("failed to upload rclone log file %s to s3: %s", logFile, e)
+			}
+		} else {
+			log.Warningf("failed to open rclone log file %s: %s", logFile, e)
 		}
 	} else {
-		log.Warningf("failed to open rclone log file %s: %s", logFile, e)
+		var index int
+		for filePath := range fileChan {
+			index++
+
+			logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d.%d.log", task.Timestamp, task.ID, index)
+			args = append(args, "--log-file", logFile, "--files-from", filepath.Join(filesDir, filePath))
+			log.Infof("rclone copy with args: %v", args)
+
+			// --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file <log-file>
+			cmd := exec.Command("rclone", args...)
+			_, err = cmd.CombinedOutput()
+
+			var s3LogFileKey string
+			f, e := os.Open(logFile)
+			if e == nil {
+				s3LogFileKey = fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
+				logFiles = append(logFiles, s3LogFileKey)
+				if e := w.uploadFile(f, task.Bucket, task.S3Config, s3LogFileKey); e != nil {
+					log.Warningf("failed to upload rclone log file %s to s3: %s", logFile, e)
+				}
+			} else {
+				log.Warningf("failed to open rclone log file %s: %s", logFile, e)
+			}
+		}
 	}
 
-	result.IncludeFile = s3IncludeFileKey
-	result.LogFile = s3LogFileKey
+	if len(logFiles) > 0 {
+		result.LogFile = logFiles[0] // simplify it
+	}
 	if err != nil {
 		result.Success = false
 		result.Message = err.Error()
 	} else {
 		result.Success = true
-		result.Message = fmt.Sprintf("Migrated task %d with include file %s successfully",
-			task.ID, includeFile)
+		result.Message = fmt.Sprintf("Migrated task %d successfully",
+			task.ID)
 	}
 
 	return result
