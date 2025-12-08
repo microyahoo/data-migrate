@@ -9,6 +9,7 @@ report_config:
     skipSSLverify: true
 
 global_config:
+  feishu_url: "feishu_url"
   source_fs_type: xfs
   target_fs_type: xfs
   tasks_file: deploy/data_sources.test.txt

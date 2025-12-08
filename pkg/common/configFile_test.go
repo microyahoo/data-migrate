@@ -43,6 +43,7 @@ func (s *configFileTestSuite) Test_loadConfigFromYAMLFile() {
     endpoint: http://10.9.8.72:80
     skipSSLverify: true
 global_config:
+  feishu_url: "feishu"
   source_fs_type: gpfs
   target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt
@@ -73,6 +74,7 @@ global_config:
 				},
 			},
 			GlobalConfig: &GlobalConfiguration{
+				FeishuURL:         "feishu",
 				SourceFsType:      "gpfs",
 				TargetFsType:      "yrfs_ec",
 				TasksFile:         "deploy/data_sources.txt",
@@ -133,6 +135,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   }
 },
 "global_config": {
+  "feishu_url": "feishu",
   "source_fs_type": "gpfs",
   "target_fs_type": "yrfs_ec",
   "tasks_file": "deploy/data_sources.txt",
@@ -163,6 +166,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				},
 			},
 			GlobalConfig: &GlobalConfiguration{
+				FeishuURL:         "feishu",
 				SourceFsType:      "gpfs",
 				TargetFsType:      "yrfs_ec",
 				TasksFile:         "deploy/data_sources.txt",

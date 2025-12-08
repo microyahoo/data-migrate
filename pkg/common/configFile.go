@@ -17,6 +17,7 @@ type MigrationConf struct {
 }
 
 type GlobalConfiguration struct {
+	FeishuURL         string       `yaml:"feishu_url" json:"feishu_url"`
 	SourceFsType      string       `yaml:"source_fs_type" json:"source_fs_type"` // cpfs
 	TargetFsType      string       `yaml:"target_fs_type" json:"target_fs_type"` // yrfs_ec
 	TasksFile         string       `yaml:"tasks_file" json:"tasks_file"`         // eg: deploy/data_sources.txt
