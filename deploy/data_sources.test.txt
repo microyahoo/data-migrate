@@ -1,0 +1,6 @@
+/mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1/ /mnt/yrfs/public-data/training/samples/camera_1/ /mnt/core-data/data/3d_object_gt/data_sync/results/sync_3d/mnt#csi-data-gfs#lidar#deeproute_all#samples#camera_1#.txt
+/mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_2/ /mnt/yrfs/public-data/training/samples/camera_2/ /mnt/core-data/data/3d_object_gt/data_sync/results/sync_3d/mnt#csi-data-gfs#lidar#deeproute_all#samples#camera_2#.txt
+/mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_3/ /mnt/yrfs/public-data/training/samples/camera_3/ 
+/root/go/src/deeproute/ops-kubeconfig/ /tmp/zhengliang /root/go/src/deeproute/data-migrate/test1.txt
+/var /tmp/zhengliang/var /root/go/src/deeproute/data-migrate/test2.txt
+/etc/udev /tmp/zhengliang/etc/udev

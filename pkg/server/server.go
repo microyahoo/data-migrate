@@ -59,6 +59,11 @@ func NewServer(cfgFile string) (*Server, error) {
 		tasks[i].S3Config = config.ReportConfig.S3Config
 		tasks[i].Timestamp = timestamp
 
+		tasks[i].FileListDir = config.GlobalConfig.FileListDir
+		tasks[i].FileListDirFsType = config.GlobalConfig.FileListDirFsType
+		tasks[i].MaxFilesPerOutput = config.GlobalConfig.MaxFilesPerOutput
+		tasks[i].Concurrency = config.GlobalConfig.Concurrency
+
 		server.pendingTasks <- *tasks[i]
 	}
 	return server, nil
@@ -206,7 +211,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 			"client id",
 			"duration",
 			"success",
-			"include file",
+			"split pattern",
 			"log file",
 			"message",
 		})
@@ -223,7 +228,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 		result.ClientID,
 		fmt.Sprintf("%s", result.Duration),
 		fmt.Sprintf("%t", result.Success),
-		result.IncludeFile,
+		result.SplitPattern,
 		result.LogFile,
 		result.Message,
 	})
@@ -284,7 +289,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 			"client id",
 			"duration",
 			"success",
-			"include file",
+			"split pattern",
 			"log file",
 			"message",
 		})
@@ -296,7 +301,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 				result.ClientID,
 				fmt.Sprintf("%s", result.Duration),
 				fmt.Sprintf("%t", result.Success),
-				result.IncludeFile,
+				result.SplitPattern,
 				result.LogFile,
 				result.Message,
 			})

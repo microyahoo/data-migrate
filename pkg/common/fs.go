@@ -275,9 +275,9 @@ func (om *OutputManager) rotateFile() error {
 
 	om.currentFile = file
 	om.writer = bufio.NewWriterSize(file, 16*1024*1024) // 16MB buffer
-	om.currentFileName = fileName
+	om.currentFileName = file.Name()
 
-	log.Infof("Created output file: %s", fileName)
+	log.Infof("Created output file: %s", file.Name())
 
 	return nil
 }

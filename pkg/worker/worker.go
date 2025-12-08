@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -113,12 +113,17 @@ func (w *Worker) checkTask(task *common.MigrationTask) error {
 	if err != nil {
 		return err
 	}
-	ft, err := common.GetFilesystemType(task.FileListDir)
-	if err != nil {
-		return err
+	if st != task.SourceFsType || tt != task.TargetFsType {
+		return fmt.Errorf("actual source or target filesystem type not match(%s, %s)", st, tt)
 	}
-	if st != task.SourceFsType || tt != task.TargetFsType || ft != task.FileListDirFsType {
-		return fmt.Errorf("actual source, target or file list directory filesystem type not match(%s, %s, %s)", st, tt, ft)
+	if task.FileListPath != "" {
+		ft, err := common.GetFilesystemType(task.FileListDir)
+		if err != nil {
+			return err
+		}
+		if ft != task.FileListDirFsType {
+			return fmt.Errorf("actual source, target or file list directory filesystem type not match(%s, %s, %s)", st, tt, ft)
+		}
 	}
 	si, err := os.Stat(task.SourceDir)
 	if err != nil {
@@ -145,82 +150,6 @@ func (w *Worker) checkTask(task *common.MigrationTask) error {
 		return fmt.Errorf("file list path %s is directory", task.FileListPath)
 	}
 	return nil
-}
-
-func (w *Worker) loadDirectories(task *common.MigrationTask) (includeFile string, s3IncludeFileKey string, err error) {
-	if task.FileListPath == "" {
-		return "", "", nil
-	}
-	// read original migration files or directory lists
-	file, err := os.Open(task.FileListPath)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to open list file: %v", err)
-	}
-	defer file.Close()
-
-	var entries []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		dir := strings.TrimSpace(scanner.Text())
-		if dir != "" {
-			entries = append(entries, dir)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return "", "", fmt.Errorf("error reading list file: %v", err)
-	}
-
-	// create a temp file for include-from file
-	tempFile, err := os.CreateTemp("", fmt.Sprintf("include_%d_*.txt", task.ID))
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create temp file: %v", err)
-	}
-	defer tempFile.Close()
-
-	for _, path := range entries {
-		var includePattern string
-
-		if task.CheckSourceEntry {
-			fullPath := filepath.Join(task.SourceDir, path)
-
-			// check file or directory
-			info, err := os.Stat(fullPath)
-			if err != nil {
-				log.Errorf("Warning: Cannot stat %s: %v", fullPath, err)
-				continue
-			}
-
-			if info.IsDir() {
-				// directories: add prefix / and append /** suffix
-				includePattern = fmt.Sprintf("/%s/**", strings.TrimPrefix(path, "/"))
-			} else {
-				// file: only add prefix /
-				includePattern = fmt.Sprintf("/%s", strings.TrimPrefix(path, "/"))
-			}
-		} else {
-			log.Debug("If not checking each entry, treat all as directories")
-			includePattern = fmt.Sprintf("/%s/**", strings.TrimPrefix(path, "/"))
-		}
-
-		// write include patterns to temp file
-		if _, err := tempFile.WriteString(includePattern + "\n"); err != nil {
-			return "", "", fmt.Errorf("failed to write to temp file: %v", err)
-		}
-	}
-
-	includeFile = tempFile.Name()
-	log.Infof("Created include file for task %d: %s with %d patterns",
-		task.ID, includeFile, len(entries))
-
-	s3IncludeFileKey = fmt.Sprintf("rclone/include-files/%d/%s", task.Timestamp,
-		filepath.Base(includeFile))
-	tempFile.Seek(0, io.SeekStart)
-	if e := w.uploadFile(tempFile, task.Bucket, task.S3Config, s3IncludeFileKey); e != nil {
-		log.Warningf("failed to upload include file %s to s3: %s", includeFile, e)
-	}
-
-	return includeFile, s3IncludeFileKey, nil
 }
 
 func (w *Worker) uploadFile(f *os.File, bucket string, s3Config *common.S3Configuration, key string) error {
@@ -260,25 +189,7 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	log.Printf("Executing task %d: %s -> %s with file list %s",
 		task.ID, task.SourceDir, task.TargetDir, task.FileListPath)
 
-	var (
-		fileChan <-chan string
-		err      error
-		logFiles []string
-		filesDir = filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp))
-	)
-	if task.FileListPath != "" {
-		if err = os.MkdirAll(filesDir, 0755); err != nil {
-			result.Success = false
-			result.Message = err.Error()
-			return result
-		}
-		fileChan, err = common.FindFiles(task.SourceDir, task.FileListPath,
-			0,                                /*list concurreny*/
-			filesDir,                         /*output directory*/
-			filepath.Base(task.FileListPath), /*output prefix*/
-			task.MaxFilesPerOutput /*max files per output*/)
-	}
-
+	// Prepare rclone arguments
 	rcloneFlags := task.RcloneFlags
 	args := []string{"copy", task.SourceDir, task.TargetDir}
 	if rcloneFlags.Checkers > 0 {
@@ -299,53 +210,22 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	if rcloneFlags.LogLevel != "" {
 		args = append(args, "--log-level", rcloneFlags.LogLevel)
 	}
+
+	var (
+		logFiles     []string
+		err          error
+		splitPattern string
+	)
+
 	if task.FileListPath == "" {
-		// TODO: CreateTemp
-		logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d.log", task.Timestamp, task.ID)
-		args = append(args, "--log-file", logFile)
-
-		// --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file <log-file>
-		cmd := exec.Command("rclone", args...)
-		_, err = cmd.CombinedOutput()
-
-		var s3LogFileKey string
-		f, e := os.Open(logFile)
-		if e == nil {
-			s3LogFileKey = fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
-			logFiles = append(logFiles, s3LogFileKey)
-			if e := w.uploadFile(f, task.Bucket, task.S3Config, s3LogFileKey); e != nil {
-				log.Warningf("failed to upload rclone log file %s to s3: %s", logFile, e)
-			}
-		} else {
-			log.Warningf("failed to open rclone log file %s: %s", logFile, e)
-		}
+		// Handle without file list
+		err = w.executeSingleRclone(task, args, &logFiles)
 	} else {
-		var index int
-		for filePath := range fileChan {
-			index++
-
-			logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d.%d.log", task.Timestamp, task.ID, index)
-			args = append(args, "--log-file", logFile, "--files-from", filepath.Join(filesDir, filePath))
-			log.Infof("rclone copy with args: %v", args)
-
-			// --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file <log-file>
-			cmd := exec.Command("rclone", args...)
-			_, err = cmd.CombinedOutput()
-
-			var s3LogFileKey string
-			f, e := os.Open(logFile)
-			if e == nil {
-				s3LogFileKey = fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
-				logFiles = append(logFiles, s3LogFileKey)
-				if e := w.uploadFile(f, task.Bucket, task.S3Config, s3LogFileKey); e != nil {
-					log.Warningf("failed to upload rclone log file %s to s3: %s", logFile, e)
-				}
-			} else {
-				log.Warningf("failed to open rclone log file %s: %s", logFile, e)
-			}
-		}
+		// Handle with file list
+		splitPattern, err = w.executeWithFileList(task, args, &logFiles)
 	}
 
+	// Set result
 	if len(logFiles) > 0 {
 		result.LogFile = logFiles[0] // simplify it
 	}
@@ -354,9 +234,365 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 		result.Message = err.Error()
 	} else {
 		result.Success = true
-		result.Message = fmt.Sprintf("Migrated task %d successfully",
-			task.ID)
+		result.SplitPattern = splitPattern
+		result.Message = fmt.Sprintf("Migrated task %d successfully", task.ID)
 	}
 
 	return result
+}
+
+// handleLogFile should also return errors
+func (w *Worker) handleLogFile(logFile string, task *common.MigrationTask, logFiles *[]string) error {
+	f, err := os.Open(logFile)
+	if err != nil {
+		return fmt.Errorf("failed to open rclone log file %s: %v", logFile, err)
+	}
+	defer f.Close()
+
+	s3LogFileKey := fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
+	if err := w.uploadFile(f, task.Bucket, task.S3Config, s3LogFileKey); err != nil {
+		return fmt.Errorf("failed to upload rclone log file %s to s3: %v", logFile, err)
+	}
+
+	*logFiles = append(*logFiles, s3LogFileKey)
+	return nil
+}
+
+// uploadLogFile uploads a log file to S3
+func (w *Worker) uploadLogFile(logFile string, task *common.MigrationTask, s3Key string) error {
+	f, err := os.Open(logFile)
+	if err != nil {
+		return fmt.Errorf("failed to open log file %s: %v", logFile, err)
+	}
+	defer f.Close()
+
+	if err := w.uploadFile(f, task.Bucket, task.S3Config, s3Key); err != nil {
+		return fmt.Errorf("failed to upload log file %s to s3: %v", logFile, err)
+	}
+
+	return nil
+}
+
+// executeWithFileList executes rclone with file list using concurrent processing
+func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []string, logFiles *[]string) (string, error) {
+	// Create directory for output files
+	filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), w.clientID)
+	if err := os.MkdirAll(filesDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create output directory: %v", err)
+	}
+
+	splitPattern := fmt.Sprintf("%s/%s_*.index", filesDir, filepath.Base(task.FileListPath))
+	// Get file channel from FindFiles
+	fileChan, err := common.FindFiles(task.SourceDir, task.FileListPath,
+		0,                                // list concurrency (let FindFiles decide)
+		filesDir,                         /*output directory*/
+		filepath.Base(task.FileListPath), /*output prefix*/
+		task.MaxFilesPerOutput /*max files per output*/)
+	if err != nil {
+		return "", fmt.Errorf("failed to find files: %v", err)
+	}
+
+	// Configurable parameters
+	concurrency := task.Concurrency  // Number of concurrent rclone processes
+	bufferSize := concurrency * 1000 // Buffer size for work channel
+
+	var (
+		// Create work channel with large buffer
+		workChan = make(chan string, bufferSize)
+
+		// Create error channel to collect errors from workers
+		errChan = make(chan error, concurrency*10)
+
+		// Track pending files and processed files
+		pendingFiles   []string
+		processedFiles []string
+		mu             sync.Mutex
+
+		// Track failed files
+		failedFiles []string
+	)
+
+	// Create a file to save pending files
+	pendingFile := fmt.Sprintf("/tmp/rclone_pending_%d_%d.txt", task.Timestamp, task.ID)
+	pendingFileHandle, err := os.Create(pendingFile)
+	if err != nil {
+		return "", fmt.Errorf("failed to create pending file: %v", err)
+	}
+	defer pendingFileHandle.Close()
+	pendingWriter := bufio.NewWriter(pendingFileHandle)
+
+	// Start workers
+	var workerWg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		workerWg.Add(1)
+		go func(workerID int) {
+			defer workerWg.Done()
+			w.rcloneWorker(workerID, task, baseArgs, filesDir, workChan,
+				&mu, &processedFiles, &failedFiles, logFiles, errChan)
+		}(i)
+	}
+
+	// Start error collector
+	errorWg := &sync.WaitGroup{}
+	errorWg.Add(1)
+	var collectedErrors []error
+
+	go func() {
+		defer errorWg.Done()
+		for err := range errChan {
+			collectedErrors = append(collectedErrors, err)
+		}
+	}()
+
+	// Distribute files to workers
+	distributeWg := &sync.WaitGroup{}
+	distributeWg.Add(1)
+
+	go func() {
+		defer distributeWg.Done()
+		fileCount := 0
+
+		for file := range fileChan {
+			fileCount++
+
+			// Try to send to work channel
+			select {
+			case workChan <- file:
+				// Successfully sent to worker
+				log.Debugf("Distributed file %d: %s", fileCount, file)
+
+			default:
+				// Work channel is full (all workers busy)
+				// Save to pending list and continue
+				mu.Lock()
+				pendingFiles = append(pendingFiles, file)
+				// Also write to file for persistence
+				pendingWriter.WriteString(file + "\n")
+				mu.Unlock()
+
+				log.Infof("Workers busy, saved file %d to pending list: %s", fileCount, file)
+			}
+		}
+
+		// Flush pending file
+		pendingWriter.Flush()
+
+		log.Infof("Finished distributing %d files (%d pending)", fileCount, len(pendingFiles))
+	}()
+
+	// Wait for distribution to complete
+	distributeWg.Wait()
+
+	// Close work channel (all real-time files distributed)
+	close(workChan)
+
+	// Wait for all workers to complete current work
+	workerWg.Wait()
+
+	// Close error channel and wait for error collector
+	close(errChan)
+	errorWg.Wait()
+
+	// Process pending files after workers finish
+	if len(pendingFiles) > 0 {
+		log.Infof("Processing %d pending files...", len(pendingFiles))
+
+		// Create new work channel for pending files
+		pendingWorkChan := make(chan string, concurrency)
+
+		// Create new error channel for pending processing
+		pendingErrChan := make(chan error, concurrency*10)
+
+		// Start workers again for pending files
+		var pendingWorkerWg sync.WaitGroup
+		for i := 0; i < concurrency; i++ {
+			pendingWorkerWg.Add(1)
+			go func(workerID int) {
+				defer pendingWorkerWg.Done()
+				w.rcloneWorker(workerID+concurrency, task, baseArgs, filesDir,
+					pendingWorkChan, &mu, &processedFiles, &failedFiles,
+					logFiles, pendingErrChan)
+			}(i)
+		}
+
+		// Start pending error collector
+		pendingErrorWg := &sync.WaitGroup{}
+		pendingErrorWg.Add(1)
+		var pendingCollectedErrors []error
+
+		go func() {
+			defer pendingErrorWg.Done()
+			for err := range pendingErrChan {
+				pendingCollectedErrors = append(pendingCollectedErrors, err)
+			}
+		}()
+
+		// Send pending files to workers
+		go func() {
+			for _, file := range pendingFiles {
+				pendingWorkChan <- file
+			}
+			close(pendingWorkChan)
+		}()
+
+		// Wait for pending files to be processed
+		pendingWorkerWg.Wait()
+
+		// Close pending error channel and collect errors
+		close(pendingErrChan)
+		pendingErrorWg.Wait()
+
+		// Merge errors
+		collectedErrors = append(collectedErrors, pendingCollectedErrors...)
+
+		log.Infof("All pending files processed")
+	} else {
+		log.Info("No pending files to process")
+	}
+
+	// Final report
+	totalFiles := len(processedFiles)
+	totalFailed := len(failedFiles)
+	log.Infof("Task completed: %d files processed, %d failed", totalFiles, totalFailed)
+
+	// Clean up pending file
+	os.Remove(pendingFile)
+
+	// Return error if any files failed
+	if len(collectedErrors) > 0 {
+		if len(collectedErrors) == 1 {
+			return "", fmt.Errorf("1 file failed: %v", collectedErrors[0])
+		}
+
+		// Create a summary error message
+		errorSummary := fmt.Sprintf("%d files failed. First few errors:", len(collectedErrors))
+		for i := 0; i < len(collectedErrors) && i < 3; i++ {
+			errorSummary += fmt.Sprintf("\n- %v", collectedErrors[i])
+		}
+		if len(collectedErrors) > 3 {
+			errorSummary += fmt.Sprintf("\n... and %d more errors", len(collectedErrors)-3)
+		}
+
+		// Also log all failed files
+		if len(failedFiles) > 0 {
+			log.Errorf("Failed files: %v", failedFiles)
+		}
+
+		return "", fmt.Errorf(errorSummary)
+	}
+
+	return splitPattern, nil
+}
+
+// rcloneWorker processes rclone commands for files and returns errors via channel
+func (w *Worker) rcloneWorker(workerID int, task *common.MigrationTask, baseArgs []string,
+	filesDir string, workChan <-chan string, mu *sync.Mutex,
+	processedFiles *[]string, failedFiles *[]string, logFiles *[]string, errChan chan<- error) {
+
+	for file := range workChan {
+		// Process the file
+		s3LogFileKey, err := w.processFile(workerID, task, baseArgs, filesDir, file)
+
+		mu.Lock()
+		*processedFiles = append(*processedFiles, file)
+
+		if err != nil {
+			// Record failed file
+			*failedFiles = append(*failedFiles, file)
+
+			// Create detailed error
+			detailedErr := fmt.Errorf("worker %d failed to process file %s: %v", workerID, file, err)
+
+			// Send error to channel
+			select {
+			case errChan <- detailedErr:
+				// Error sent successfully
+			default:
+				// Error channel is full, log and continue
+				log.Errorf("Error channel full, could not send error: %v", detailedErr)
+			}
+
+			log.Errorf("Worker %d: Failed to process file %s: %v", workerID, file, err)
+		} else {
+			// Add to log files list if successful
+			*logFiles = append(*logFiles, s3LogFileKey)
+			log.Debugf("Worker %d: Successfully processed file %s", workerID, file)
+		}
+
+		// Report progress every 10 files
+		if len(*processedFiles)%10 == 0 {
+			log.Infof("Progress: %d files processed, %d failed",
+				len(*processedFiles), len(*failedFiles))
+		}
+
+		mu.Unlock()
+	}
+
+	log.Infof("Worker %d: Finished processing", workerID)
+}
+
+// processFile processes a single file with rclone
+func (w *Worker) processFile(workerID int, task *common.MigrationTask, baseArgs []string,
+	filesDir string, file string) (string, error) {
+
+	// Create unique log file
+	logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d_worker%d_%s.log",
+		task.Timestamp, task.ID, workerID, sanitizeFileName(filepath.Base(file)))
+
+	// Prepare arguments
+	args := make([]string, len(baseArgs))
+	copy(args, baseArgs)
+	args = append(args, "--log-file", logFile, "--no-traverse", "--files-from", file)
+
+	log.Infof("Worker %d: Executing rclone for file %s with rclone args: %v", workerID, file, args)
+
+	// Create and execute command
+	cmd := exec.Command("rclone", args...)
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		// Return detailed error including command output
+		return "", fmt.Errorf("rclone command failed: %v, output: %s", err, string(output))
+	}
+
+	log.Infof("Worker %d: Successfully processed file %s", workerID, file)
+
+	// Upload log file
+	s3LogFileKey := fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
+	if uploadErr := w.uploadLogFile(logFile, task, s3LogFileKey); uploadErr != nil {
+		log.Warningf("Worker %d: Failed to upload log file %s: %v", workerID, logFile, uploadErr)
+		// Don't fail the entire operation if upload fails
+		// The file was still processed successfully
+	}
+
+	return s3LogFileKey, nil
+}
+
+// sanitizeFileName removes invalid characters from file name
+func sanitizeFileName(name string) string {
+	// Replace problematic characters
+	invalidChars := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
+	result := name
+	for _, char := range invalidChars {
+		result = strings.ReplaceAll(result, char, "_")
+	}
+	return result
+}
+
+// executeSingleRclone should also return errors properly
+func (w *Worker) executeSingleRclone(task *common.MigrationTask, baseArgs []string, logFiles *[]string) error {
+	logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d.log", task.Timestamp, task.ID)
+	args := append(baseArgs, "--log-file", logFile)
+
+	log.Infof("rclone copy with args: %v", args)
+	cmd := exec.Command("rclone", args...)
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		log.Errorf("rclone command failed: %v, output: %s", err, string(output))
+		return fmt.Errorf("rclone command failed: %s", err)
+	}
+
+	// Upload log file
+	return w.handleLogFile(logFile, task, logFiles)
 }
