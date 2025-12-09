@@ -215,6 +215,7 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 		logFiles     []string
 		err          error
 		splitPattern string
+		splitFiles   int
 	)
 
 	if task.FileListPath == "" {
@@ -222,7 +223,7 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 		err = w.executeSingleRclone(task, args, &logFiles)
 	} else {
 		// Handle with file list
-		splitPattern, err = w.executeWithFileList(task, args, &logFiles)
+		splitPattern, splitFiles, err = w.executeWithFileList(task, args, &logFiles)
 	}
 
 	// Set result
@@ -235,6 +236,7 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	} else {
 		result.Success = true
 		result.SplitPattern = splitPattern
+		result.SplitFiles = splitFiles
 		result.Message = fmt.Sprintf("Migrated task %d successfully", task.ID)
 	}
 
@@ -274,22 +276,22 @@ func (w *Worker) uploadLogFile(logFile string, task *common.MigrationTask, s3Key
 }
 
 // executeWithFileList executes rclone with file list using concurrent processing
-func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []string, logFiles *[]string) (string, error) {
+func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []string, logFiles *[]string) (string, int, error) {
 	// Create directory for output files
 	filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), w.clientID)
 	if err := os.MkdirAll(filesDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create output directory: %v", err)
+		return "", 0, fmt.Errorf("failed to create output directory: %v", err)
 	}
 
 	splitPattern := fmt.Sprintf("%s/%s_*.index", filesDir, filepath.Base(task.FileListPath))
 	// Get file channel from FindFiles
-	fileChan, err := common.FindFiles(task.SourceDir, task.FileListPath,
+	fileChan, err := common.FindFiles(task.SourceDir, task.TargetDir, task.FileListPath,
 		0,                                // list concurrency (let FindFiles decide)
 		filesDir,                         /*output directory*/
 		filepath.Base(task.FileListPath), /*output prefix*/
 		task.MaxFilesPerOutput /*max files per output*/)
 	if err != nil {
-		return "", fmt.Errorf("failed to find files: %v", err)
+		return "", 0, fmt.Errorf("failed to find files: %v", err)
 	}
 
 	// Configurable parameters
@@ -316,7 +318,7 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 	pendingFile := fmt.Sprintf("/tmp/rclone_pending_%d_%d.txt", task.Timestamp, task.ID)
 	pendingFileHandle, err := os.Create(pendingFile)
 	if err != nil {
-		return "", fmt.Errorf("failed to create pending file: %v", err)
+		return "", 0, fmt.Errorf("failed to create pending file: %v", err)
 	}
 	defer pendingFileHandle.Close()
 	pendingWriter := bufio.NewWriter(pendingFileHandle)
@@ -461,7 +463,7 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 	// Return error if any files failed
 	if len(collectedErrors) > 0 {
 		if len(collectedErrors) == 1 {
-			return "", fmt.Errorf("1 file failed: %v", collectedErrors[0])
+			return "", 0, fmt.Errorf("1 file failed: %v", collectedErrors[0])
 		}
 
 		// Create a summary error message
@@ -478,10 +480,10 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 			log.Errorf("Failed files: %v", failedFiles)
 		}
 
-		return "", fmt.Errorf(errorSummary)
+		return "", 0, fmt.Errorf(errorSummary)
 	}
 
-	return splitPattern, nil
+	return splitPattern, totalFiles, nil
 }
 
 // rcloneWorker processes rclone commands for files and returns errors via channel
