@@ -59,6 +59,11 @@ func NewServer(cfgFile string) (*Server, error) {
 		tasks[i].S3Config = config.ReportConfig.S3Config
 		tasks[i].Timestamp = timestamp
 
+		tasks[i].FileListDir = config.GlobalConfig.FileListDir
+		tasks[i].FileListDirFsType = config.GlobalConfig.FileListDirFsType
+		tasks[i].MaxFilesPerOutput = config.GlobalConfig.MaxFilesPerOutput
+		tasks[i].Concurrency = config.GlobalConfig.Concurrency
+
 		server.pendingTasks <- *tasks[i]
 	}
 	return server, nil
@@ -166,7 +171,7 @@ func (s *Server) handleClient(conn net.Conn, clientID string) {
 
 func (s *Server) handleResults() {
 	for result := range s.completed {
-		log.Printf("Task %d completed by client %s: success=%v, message=%s",
+		log.Infof("Task %d completed by client %s: success=%v, message=%s",
 			result.TaskID, result.ClientID, result.Success, result.Message)
 
 		s.writeResultToCSV(result)
@@ -178,6 +183,18 @@ func (s *Server) handleResults() {
 		if len(s.results) == len(s.tasks) {
 			s.generateResults(s.results)
 			close(s.done)
+		}
+		if s.config.GlobalConfig.FeishuURL != "" {
+			content := NewFormatter().FormatMigrationMessage(result)
+			err := common.SendFeishuCard(
+				s.config.GlobalConfig.FeishuURL,
+				content,
+			)
+			if err != nil {
+				log.Warningf("send feishu message failed: %v", err)
+			} else {
+				log.Infof("send feishu message successfully")
+			}
 		}
 	}
 }
@@ -206,7 +223,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 			"client id",
 			"duration",
 			"success",
-			"include file",
+			"split pattern",
 			"log file",
 			"message",
 		})
@@ -223,7 +240,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 		result.ClientID,
 		fmt.Sprintf("%s", result.Duration),
 		fmt.Sprintf("%t", result.Success),
-		result.IncludeFile,
+		result.SplitPattern,
 		result.LogFile,
 		result.Message,
 	})
@@ -284,7 +301,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 			"client id",
 			"duration",
 			"success",
-			"include file",
+			"split pattern",
 			"log file",
 			"message",
 		})
@@ -296,7 +313,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 				result.ClientID,
 				fmt.Sprintf("%s", result.Duration),
 				fmt.Sprintf("%t", result.Success),
-				result.IncludeFile,
+				result.SplitPattern,
 				result.LogFile,
 				result.Message,
 			})
@@ -358,4 +375,55 @@ func (s *Server) generateResults(results []common.TaskResult) {
 	if e != nil {
 		log.WithError(e).Warningf("Failed to upload report file to s3 bucket %s", s.config.ReportConfig.Bucket)
 	}
+}
+
+// Formatter 消息格式化器
+type Formatter struct {
+	SeparatorChar string // 分隔符字符
+	SeparatorLen  int    // 分隔符长度
+}
+
+// NewFormatter 创建格式化器
+func NewFormatter() *Formatter {
+	return &Formatter{
+		SeparatorChar: "*",
+		SeparatorLen:  50,
+	}
+}
+
+// writeLine 辅助函数：写入一行
+func writeLine(builder *strings.Builder, label, value string) {
+	builder.WriteString(fmt.Sprintf("%s: %s", label, value) + "\n")
+}
+
+// FormatMigrationMessage 格式化迁移消息
+func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
+	var builder strings.Builder
+
+	// 标题行
+	status := "成功"
+	if !msg.Success {
+		status = "失败"
+	}
+	titleLine := fmt.Sprintf("迁移任务状态: %s", status)
+	builder.WriteString(titleLine + "\n")
+
+	// 分隔线
+	separator := strings.Repeat(f.SeparatorChar, f.SeparatorLen)
+	builder.WriteString(separator + "\n")
+
+	// 统计信息
+	writeLine(&builder, "source dir", msg.SourceDir)
+	writeLine(&builder, "target dir", msg.TargetDir)
+	writeLine(&builder, "duration", fmt.Sprintf("%s", msg.Duration))
+	writeLine(&builder, "task id", fmt.Sprintf("%d", msg.TaskID))
+	writeLine(&builder, "client id", msg.ClientID)
+	writeLine(&builder, "split pattern", msg.SplitPattern)
+	writeLine(&builder, "log file", msg.LogFile)
+	writeLine(&builder, "message", msg.Message)
+
+	// 分隔线
+	builder.WriteString(separator + "\n")
+
+	return builder.String()
 }

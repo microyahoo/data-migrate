@@ -43,10 +43,15 @@ func (s *configFileTestSuite) Test_loadConfigFromYAMLFile() {
     endpoint: http://10.9.8.72:80
     skipSSLverify: true
 global_config:
+  feishu_url: "feishu"
   source_fs_type: gpfs
   target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt
   check_source_entry: true # Check if the source exists and whether it is a file or directory
+  file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
+  file_list_dir_fs_type: yrfs_ec
+  max_files_per_output: 500000
+  concurrency: 3
   #
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
   rclone_flags:
@@ -69,10 +74,15 @@ global_config:
 				},
 			},
 			GlobalConfig: &GlobalConfiguration{
-				SourceFsType:     "gpfs",
-				TargetFsType:     "yrfs_ec",
-				TasksFile:        "deploy/data_sources.txt",
-				CheckSourceEntry: true,
+				FeishuURL:         "feishu",
+				SourceFsType:      "gpfs",
+				TargetFsType:      "yrfs_ec",
+				TasksFile:         "deploy/data_sources.txt",
+				CheckSourceEntry:  true,
+				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
+				FileListDirFsType: "yrfs_ec",
+				MaxFilesPerOutput: 500000,
+				Concurrency:       3,
 				RcloneFlags: &RcloneFlags{
 					Checkers:          128,
 					Transfers:         64,
@@ -125,10 +135,15 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   }
 },
 "global_config": {
+  "feishu_url": "feishu",
   "source_fs_type": "gpfs",
   "target_fs_type": "yrfs_ec",
   "tasks_file": "deploy/data_sources.txt",
-  "check_source_entry": "true",
+  "check_source_entry": true,
+  "file_list_dir": "/mnt/yrfs/public-data/user/zhengliang/",
+  "file_list_dir_fs_type": "yrfs_ec",
+  "max_files_per_output": 500000,
+  "concurrency": 3,
   "rclone_flags":  {
     "checkers": 128,
 	"transfers": 64,
@@ -151,10 +166,15 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				},
 			},
 			GlobalConfig: &GlobalConfiguration{
-				SourceFsType:     "gpfs",
-				TargetFsType:     "yrfs_ec",
-				TasksFile:        "deploy/data_sources.txt",
-				CheckSourceEntry: true,
+				FeishuURL:         "feishu",
+				SourceFsType:      "gpfs",
+				TargetFsType:      "yrfs_ec",
+				TasksFile:         "deploy/data_sources.txt",
+				CheckSourceEntry:  true,
+				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
+				FileListDirFsType: "yrfs_ec",
+				MaxFilesPerOutput: 500000,
+				Concurrency:       3,
 				RcloneFlags: &RcloneFlags{
 					Checkers:          128,
 					Transfers:         64,

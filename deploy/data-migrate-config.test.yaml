@@ -10,16 +10,16 @@ report_config:
 
 global_config:
   feishu_url: "feishu_url"
-  source_fs_type: gpfs
-  target_fs_type: yrfs_ec
-  tasks_file: deploy/data_sources.txt
+  source_fs_type: xfs
+  target_fs_type: xfs
+  tasks_file: deploy/data_sources.test.txt
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
-  file_list_dir_fs_type: yrfs_ec
-  max_files_per_output: 500000
+  file_list_dir_fs_type: xfs
+  max_files_per_output: 1000
   concurrency: 3
 
-  check_source_entry: true # Deprecated: check if the source exists and whether it is a file or directory
+  check_source_entry: false # Check if the source exists and whether it is a file or directory
   #
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
   rclone_flags:
@@ -28,4 +28,5 @@ global_config:
     log_level: INFO
     local_no_set_modtime: true
     size_only: true
-    dryrun: true
+    # dryrun: true
+    dryrun: false
