@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -24,14 +25,15 @@ import (
 )
 
 type Server struct {
-	config       *common.MigrationConf
-	tasks        []*common.MigrationTask
-	pendingTasks chan common.MigrationTask
-	completed    chan common.TaskResult
-	results      []common.TaskResult
-	clients      map[string]net.Conn
-	mu           sync.RWMutex
-	done         chan struct{}
+	config           *common.MigrationConf
+	tasks            []*common.MigrationTask
+	pendingTasks     chan common.MigrationTask
+	completed        chan common.TaskResult
+	results          []common.TaskResult
+	clients          map[string]net.Conn
+	mu               sync.RWMutex
+	done             chan struct{}
+	completedCounter uint64
 }
 
 func NewServer(cfgFile string) (*Server, error) {
@@ -174,8 +176,12 @@ func (s *Server) handleResults() {
 		log.Infof("Task %d completed by client %s: success=%v, message=%s",
 			result.TaskID, result.ClientID, result.Success, result.Message)
 
+		atomic.AddUint64(&s.completedCounter, 1)
+
 		s.writeResultToCSV(result)
+
 		s.results = append(s.results, result)
+
 		// if !result.Success {
 		// TODO
 		// 	log.Printf("Task %d failed, will retry later", result.TaskID)
@@ -201,8 +207,8 @@ func (s *Server) handleResults() {
 
 func (s *Server) GetProgress() (int, int) {
 	total := len(s.tasks)
-	completed := total - len(s.pendingTasks)
-	return completed, total
+	completed := atomic.LoadUint64(&s.completedCounter)
+	return int(completed), total
 }
 
 func (s *Server) writeResultToCSV(result common.TaskResult) {
