@@ -64,10 +64,15 @@ report_config:
     skipSSLverify: true
 
 global_config:
+  feishu_url: "feishu_url"
   source_fs_type: gpfs
   target_fs_type: yrfs_ec
-  tasks_file: deploy/data_sources.txt # data sources
-  check_source_entry: true # Check if the source exists and whether it is a file or directory
+  tasks_file: deploy/data_sources.txt
+
+  file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
+  file_list_dir_fs_type: yrfs_ec
+  max_files_per_output: 500000
+  concurrency: 3
   rclone_flags:
     checkers: 128
     transfers: 128
@@ -101,11 +106,11 @@ On client machines (or multiple terminals on the same machine):
 ```
 
 ## Results
-| ID | Source Directory | Target Directory | Client ID | Duration | Success | Include File | Log File | Message |
-|----|------------------|------------------|-----------|----------|---------|--------------|----------|---------|
-| 1 | /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1/ | /mnt/yrfs/public-data/training/samples/camera_1/ | 127.0.0.1:35644 | 851.373us | false |  |  | path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1: no such file or directory |
-| 2 | /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_2/ | /mnt/yrfs/public-data/training/samples/camera_2/ | 127.0.0.1:35644 | 347.086us | false |  |  | path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_2: no such file or directory |
-| 3 | /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_3/ | /mnt/yrfs/public-data/training/samples/camera_3/ | 127.0.0.1:35644 | 224.726us | false |  |  | path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_3: no such file or directory |
-| 4 | /root/go/src/deeproute/ops-kubeconfig/ | /tmp/zhengliang | 127.0.0.1:35644 | 996.56162ms | true | rclone/include-files/1764920244408/include_4_2571331201.txt | rclone/log-files/1764920244408/rclone_copy_1764920244408_4.txt | Migrated task 4 with include file /tmp/include_4_2571331201.txt successfully |
-| 5 | /var | /tmp/zhengliang/var | 127.0.0.1:35644 | 277.877946ms | true | rclone/include-files/1764920244408/include_5_1088298075.txt | rclone/log-files/1764920244408/rclone_copy_1764920244408_5.txt | Migrated task 5 with include file /tmp/include_5_1088298075.txt successfully |
-| 6 | /etc/udev | /tmp/zhengliang/etc/udev | 127.0.0.1:35644 | 303.633042ms | true |  | rclone/log-files/1764920244408/rclone_copy_1764920244408_6.txt | Migrated task 6 with include file successfully |
+| id | source dir | target dir | client id | duration | success | split pattern | split files | log file | message |
+|----|------------|------------|-----------|----------|---------|---------------|-------------|----------|---------|
+| 1 | /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1/ | /mnt/yrfs/public-data/training/samples/camera_1/ | 127.0.0.1:41170 | 879.66s | false |  | 0 |  | path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1: no such file or directory |
+| 2 | /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_2/ | /mnt/yrfs/public-data/training/samples/camera_2/ | 127.0.0.1:41170 | 323.36s | false |  | 0 |  | path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_2: no such file or directory |
+| 3 | /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_3/ | /mnt/yrfs/public-data/training/samples/camera_3/ | 127.0.0.1:41170 | 362.933s | false |  | 0 |  | path does not exist: stat /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_3: no such file or directory |
+| 4 | /root/go/src/deeproute/ops-kubeconfig/ | /tmp/zhengliang | 127.0.0.1:41170 | 609.270302ms | true | /mnt/yrfs/public-data/user/zhengliang/1765264052219/k1-32303/test1.txt_*.index | 3 | rclone/log-files/1765264052219/rclone_copy_1765264052219_4_worker2_test1.txt_0003.index.log | Migrated task 4 successfully |
+| 5 | /var | /tmp/zhengliang/var | 127.0.0.1:41170 | 249.514503ms | true | /mnt/yrfs/public-data/user/zhengliang/1765264052219/k1-32303/test2.txt_*.index | 1 | rclone/log-files/1765264052219/rclone_copy_1765264052219_5_worker0_test2.txt_0001.index.log | Migrated task 5 successfully |
+| 6 | /etc/udev | /tmp/zhengliang/etc/udev | 127.0.0.1:41170 | 299.82239ms | true |  | 0 | rclone/log-files/1765264052219/rclone_copy_1765264052219_6.log | Migrated task 6 successfully |

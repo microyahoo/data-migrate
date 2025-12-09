@@ -47,7 +47,6 @@ global_config:
   source_fs_type: gpfs
   target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt
-  check_source_entry: true # Check if the source exists and whether it is a file or directory
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
   file_list_dir_fs_type: yrfs_ec
   max_files_per_output: 500000
@@ -78,7 +77,6 @@ global_config:
 				SourceFsType:      "gpfs",
 				TargetFsType:      "yrfs_ec",
 				TasksFile:         "deploy/data_sources.txt",
-				CheckSourceEntry:  true,
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
 				FileListDirFsType: "yrfs_ec",
 				MaxFilesPerOutput: 500000,
@@ -139,7 +137,6 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   "source_fs_type": "gpfs",
   "target_fs_type": "yrfs_ec",
   "tasks_file": "deploy/data_sources.txt",
-  "check_source_entry": true,
   "file_list_dir": "/mnt/yrfs/public-data/user/zhengliang/",
   "file_list_dir_fs_type": "yrfs_ec",
   "max_files_per_output": 500000,
@@ -170,7 +167,6 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				SourceFsType:      "gpfs",
 				TargetFsType:      "yrfs_ec",
 				TasksFile:         "deploy/data_sources.txt",
-				CheckSourceEntry:  true,
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
 				FileListDirFsType: "yrfs_ec",
 				MaxFilesPerOutput: 500000,
