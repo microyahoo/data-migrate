@@ -19,8 +19,6 @@ global_config:
   max_files_per_output: 1000
   concurrency: 3
 
-  check_source_entry: false # Check if the source exists and whether it is a file or directory
-  #
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
   rclone_flags:
     checkers: 128

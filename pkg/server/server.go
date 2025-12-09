@@ -53,7 +53,6 @@ func NewServer(cfgFile string) (*Server, error) {
 	}
 	timestamp := time.Now().UnixMilli()
 	for i := range tasks {
-		tasks[i].CheckSourceEntry = config.GlobalConfig.CheckSourceEntry
 		tasks[i].SourceFsType = config.GlobalConfig.SourceFsType
 		tasks[i].TargetFsType = config.GlobalConfig.TargetFsType
 		tasks[i].Bucket = config.ReportConfig.Bucket
