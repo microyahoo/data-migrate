@@ -73,12 +73,13 @@ func getFilesystemTypeLinux(path string) (string, error) {
 //
 // FindFiles finds files and returns output file channel in real-time
 // baseDir: base directory
+// targetDir: target directory
 // subdirsFile: file containing list of subdirectories
 // concurrency: number of concurrent workers
 // outputPrefix: prefix for output files
 // maxFilesPerOutput: maximum files per output file
 // Returns: output file channel and error
-func FindFiles(baseDir string, subdirsFile string, concurrency int, outputDir, outputPrefix string, maxFilesPerOutput int) (<-chan string, error) {
+func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDir, outputPrefix string, maxFilesPerOutput int) (<-chan string, error) {
 	// Open subdirectories file
 	f, err := os.Open(subdirsFile)
 	if err != nil {
@@ -123,6 +124,9 @@ func FindFiles(baseDir string, subdirsFile string, concurrency int, outputDir, o
 				defer wg.Done()
 
 				for subdir := range subdirCh {
+					if e := os.Mkdir(filepath.Join(targetDir, subdir), 0755); e != nil && !os.IsExist(e) {
+						log.Warningf("failed to mkdir %s: %s", filepath.Join(targetDir, subdir), e)
+					}
 					root := filepath.Join(baseDir, subdir)
 					err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 						if err != nil {

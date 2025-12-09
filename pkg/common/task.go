@@ -17,6 +17,7 @@ type TaskResult struct {
 	Message      string        `json:"message"`
 	ClientID     string        `json:"client_id"`
 	SplitPattern string        `json:"split_pattern"`
+	SplitFiles   int           `json:"split_files"`
 	LogFile      string        `json:"log_file"`
 	Duration     time.Duration `json:"duration"`
 }

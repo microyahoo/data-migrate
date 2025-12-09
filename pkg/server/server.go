@@ -224,6 +224,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 			"duration",
 			"success",
 			"split pattern",
+			"split files",
 			"log file",
 			"message",
 		})
@@ -241,6 +242,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 		fmt.Sprintf("%s", result.Duration),
 		fmt.Sprintf("%t", result.Success),
 		result.SplitPattern,
+		fmt.Sprintf("%d", result.SplitFiles),
 		result.LogFile,
 		result.Message,
 	})
@@ -302,6 +304,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 			"duration",
 			"success",
 			"split pattern",
+			"split files",
 			"log file",
 			"message",
 		})
@@ -314,6 +317,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 				fmt.Sprintf("%s", result.Duration),
 				fmt.Sprintf("%t", result.Success),
 				result.SplitPattern,
+				fmt.Sprintf("%d", result.SplitFiles),
 				result.LogFile,
 				result.Message,
 			})
@@ -419,6 +423,7 @@ func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
 	writeLine(&builder, "task id", fmt.Sprintf("%d", msg.TaskID))
 	writeLine(&builder, "client id", msg.ClientID)
 	writeLine(&builder, "split pattern", msg.SplitPattern)
+	writeLine(&builder, "split files", fmt.Sprintf("%d", msg.SplitFiles))
 	writeLine(&builder, "log file", msg.LogFile)
 	writeLine(&builder, "message", msg.Message)
 
