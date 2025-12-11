@@ -218,13 +218,7 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 		splitFiles   int
 	)
 
-	if task.FileListPath == "" {
-		// Handle without file list
-		err = w.executeSingleRclone(task, args, &logFiles)
-	} else {
-		// Handle with file list
-		splitPattern, splitFiles, err = w.executeWithFileList(task, args, &logFiles)
-	}
+	splitPattern, splitFiles, err = w.executeWithFileList(task, args, &logFiles)
 
 	// Set result
 	if len(logFiles) > 0 {
@@ -276,6 +270,7 @@ func (w *Worker) uploadLogFile(logFile string, task *common.MigrationTask, s3Key
 }
 
 // executeWithFileList executes rclone with file list using concurrent processing
+// Returns: split pattern and file counts, and error
 func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []string, logFiles *[]string) (string, int, error) {
 	// Create directory for output files
 	filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), w.clientID)
@@ -284,11 +279,16 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 	}
 
 	splitPattern := fmt.Sprintf("%s/%s_*.index", filesDir, filepath.Base(task.FileListPath))
+	outputPrefix := filepath.Base(task.FileListPath)
+	if task.FileListPath == "" {
+		outputPrefix = filepath.Base(task.SourceDir)
+		splitPattern = fmt.Sprintf("%s/%s_*.index", filesDir, outputPrefix)
+	}
 	// Get file channel from FindFiles
 	fileChan, err := common.FindFiles(task.SourceDir, task.TargetDir, task.FileListPath,
-		0,                                // list concurrency (let FindFiles decide)
-		filesDir,                         /*output directory*/
-		filepath.Base(task.FileListPath), /*output prefix*/
+		0,            /* list concurrency (let FindFiles decide) */
+		filesDir,     /*output directory*/
+		outputPrefix, /*output prefix*/
 		task.MaxFilesPerOutput /*max files per output*/)
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to find files: %v", err)
@@ -579,22 +579,4 @@ func sanitizeFileName(name string) string {
 		result = strings.ReplaceAll(result, char, "_")
 	}
 	return result
-}
-
-// executeSingleRclone should also return errors properly
-func (w *Worker) executeSingleRclone(task *common.MigrationTask, baseArgs []string, logFiles *[]string) error {
-	logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d.log", task.Timestamp, task.ID)
-	args := append(baseArgs, "--log-file", logFile)
-
-	log.Infof("rclone copy with args: %v", args)
-	cmd := exec.Command("rclone", args...)
-	output, err := cmd.CombinedOutput()
-
-	if err != nil {
-		log.Errorf("rclone command failed: %v, output: %s", err, string(output))
-		return fmt.Errorf("rclone command failed: %s", err)
-	}
-
-	// Upload log file
-	return w.handleLogFile(logFile, task, logFiles)
 }

@@ -74,12 +74,21 @@ func getFilesystemTypeLinux(path string) (string, error) {
 // FindFiles finds files and returns output file channel in real-time
 // baseDir: base directory
 // targetDir: target directory
-// subdirsFile: file containing list of subdirectories
+// subdirsFile: file containing list of subdirectories (if empty, will scan baseDir directly)
 // concurrency: number of concurrent workers
 // outputPrefix: prefix for output files
 // maxFilesPerOutput: maximum files per output file
 // Returns: output file channel and error
 func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDir, outputPrefix string, maxFilesPerOutput int) (<-chan string, error) {
+	var (
+		fileEntryList []os.DirEntry
+		err           error
+	)
+	// Handle empty subdirsFile case
+	if subdirsFile == "" {
+		subdirsFile, fileEntryList, err = FindFilesInBaseDir(baseDir, targetDir, concurrency, outputDir, outputPrefix, maxFilesPerOutput)
+	}
+
 	// Open subdirectories file
 	f, err := os.Open(subdirsFile)
 	if err != nil {
@@ -101,7 +110,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 	outputFileChan := make(chan string, 10)
 
 	// Start a goroutine to perform the actual file finding
-	go func() {
+	go func(entries []os.DirEntry) {
 		defer f.Close()
 
 		outputMgr := &OutputManager{
@@ -152,6 +161,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 					})
 
 					if err != nil {
+						// TODO: error
 						log.Errorf("error walking directory %s: %v", root, err)
 					}
 				}
@@ -176,20 +186,111 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 		}
 
 		if err := scanner.Err(); err != nil {
+			// TODO: error
 			log.Errorf("failed to read subdirs file: %v", err)
 		}
 
 		close(subdirCh)
 		wg.Wait()
 
+		for _, e := range entries {
+			// Skip directories and symlinks
+			if e.Type()&os.ModeSymlink != 0 {
+				continue
+			}
+
+			// Write to output file
+			if err := outputMgr.WriteLine(e.Name()); err != nil {
+				// TODO: error
+				log.Errorf("failed to write line: %s", err)
+			}
+		}
+
 		// Process the last output file (if it has data)
 		outputMgr.finalizeCurrentFile()
 
 		totalFiles, fileCount := outputMgr.GetStats()
 		log.Infof("Export completed: %d files in %d output files", totalFiles, fileCount)
-	}()
+	}(fileEntryList)
 
 	return outputFileChan, nil
+}
+
+// FindFilesInBaseDir finds all files in base directory and its subdirectories
+// It creates two files: one for files directly in baseDir, and another for subdirectories
+// Then it uses FindFiles with the subdirectories file
+// Returns: subdir file, file entry list and error
+func FindFilesInBaseDir(baseDir, targetDir string, concurrency int, outputDir, outputPrefix string, maxFilesPerOutput int) (string, []os.DirEntry, error) {
+	// Create temporary directory for intermediate files
+	tempDir, err := os.MkdirTemp("", "findfiles_*")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp directory: %v", err)
+	}
+
+	// Create files for different types of paths
+	filesInBaseDirFile := filepath.Join(tempDir, "files_in_base_dir.txt")
+	subdirsFile := filepath.Join(tempDir, "subdirs.txt")
+
+	// Open files for writing
+	filesWriter, err := os.Create(filesInBaseDirFile)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create files list: %v", err)
+	}
+	defer filesWriter.Close()
+
+	subdirsWriter, err := os.Create(subdirsFile)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create subdirs list: %v", err)
+	}
+	defer subdirsWriter.Close()
+
+	// Scan base directory
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read base directory: %v", err)
+	}
+
+	var fileEntries []os.DirEntry
+	var dirEntries []os.DirEntry
+
+	// Separate files and directories
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirEntries = append(dirEntries, entry)
+		} else if entry.Type().IsRegular() {
+			fileEntries = append(fileEntries, entry)
+		}
+	}
+
+	log.Infof("Found %d files directly in base directory", len(fileEntries))
+	log.Infof("Found %d subdirectories in base directory", len(dirEntries))
+
+	// Write files directly in baseDir to filesInBaseDirFile
+	for _, file := range fileEntries {
+		if _, err := filesWriter.WriteString(file.Name() + "\n"); err != nil {
+			return "", nil, fmt.Errorf("failed to write file entry: %v", err)
+		}
+	}
+
+	// Write subdirectories to subdirsFile
+	for _, dir := range dirEntries {
+		if _, err := subdirsWriter.WriteString(dir.Name() + "\n"); err != nil {
+			return "", nil, fmt.Errorf("failed to write directory entry: %v", err)
+		}
+	}
+
+	// Flush files
+	if err := filesWriter.Sync(); err != nil {
+		log.Warningf("Failed to sync files list: %v", err)
+		return "", nil, err
+	}
+
+	if err := subdirsWriter.Sync(); err != nil {
+		log.Warningf("Failed to sync subdirs list: %v", err)
+		return "", nil, err
+	}
+
+	return subdirsFile, fileEntries, nil
 }
 
 type OutputManager struct {

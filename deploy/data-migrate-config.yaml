@@ -16,7 +16,7 @@ global_config:
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
   file_list_dir_fs_type: yrfs_ec
-  max_files_per_output: 500000
+  max_files_per_output: 1000000
   concurrency: 3
 
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
