@@ -4,3 +4,4 @@
 /root/go/src/deeproute/ops-kubeconfig/ /tmp/zhengliang /root/go/src/deeproute/data-migrate/test1.txt
 /var /tmp/zhengliang/var /root/go/src/deeproute/data-migrate/test2.txt
 /etc/udev /tmp/zhengliang/etc/udev
+/root/go/src/github.com/rclone /tmp/zhengliang/rclone
