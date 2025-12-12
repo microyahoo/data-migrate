@@ -86,7 +86,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 	)
 	// Handle empty subdirsFile case
 	if subdirsFile == "" {
-		subdirsFile, fileEntryList, err = FindFilesInBaseDir(baseDir, targetDir, concurrency, outputDir, outputPrefix, maxFilesPerOutput)
+		subdirsFile, fileEntryList, err = FindFilesInBaseDir(baseDir)
 	}
 
 	// Open subdirectories file
@@ -219,8 +219,8 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 // FindFilesInBaseDir finds all files in base directory and its subdirectories
 // It creates two files: one for files directly in baseDir, and another for subdirectories
 // Then it uses FindFiles with the subdirectories file
-// Returns: subdir file, file entry list and error
-func FindFilesInBaseDir(baseDir, targetDir string, concurrency int, outputDir, outputPrefix string, maxFilesPerOutput int) (string, []os.DirEntry, error) {
+// Returns: subdirs file, file entry list and error
+func FindFilesInBaseDir(baseDir string) (string, []os.DirEntry, error) {
 	// Create temporary directory for intermediate files
 	tempDir, err := os.MkdirTemp("", "findfiles_*")
 	if err != nil {
