@@ -207,7 +207,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 		}
 
 		// Process the last output file (if it has data)
-		outputMgr.finalizeCurrentFile()
+		outputMgr.FinalizeCurrentFile()
 
 		totalFiles, fileCount := outputMgr.GetStats()
 		log.Infof("Export completed: %d files in %d output files", totalFiles, fileCount)
@@ -362,12 +362,18 @@ func (om *OutputManager) sendCompletedFile() error {
 	}
 
 	// Reset counters
-	om.fileCount = 0
-	om.currentFile = nil
-	om.currentFileName = ""
+	om.reset()
+
 	om.fileNum++
 
 	return nil
+}
+
+func (om *OutputManager) reset() {
+	// Reset counters
+	om.fileCount = 0
+	om.currentFile = nil
+	om.currentFileName = ""
 }
 
 func (om *OutputManager) rotateFile() error {
@@ -387,8 +393,8 @@ func (om *OutputManager) rotateFile() error {
 	return nil
 }
 
-// finalizeCurrentFile processes the current file (if it has data)
-func (om *OutputManager) finalizeCurrentFile() {
+// FinalizeCurrentFile processes the current file (if it has data)
+func (om *OutputManager) FinalizeCurrentFile() {
 	om.mu.Lock()
 	defer om.mu.Unlock()
 
@@ -407,6 +413,7 @@ func (om *OutputManager) finalizeCurrentFile() {
 				// 	log.Warningf("Output file channel is full, could not send final file: %s", om.currentFileName)
 			}
 		}
+		om.reset()
 	}
 }
 
