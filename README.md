@@ -64,6 +64,9 @@ report_config:
     skipSSLverify: true
 
 global_config:
+  ultra_large_scale: false   # indicate ultra-large-scale task
+  server_side_listing: false # Whether to list files on server side
+
   feishu_url: "feishu_url"
   source_fs_type: gpfs
   target_fs_type: yrfs_ec

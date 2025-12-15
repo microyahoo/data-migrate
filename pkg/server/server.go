@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,8 +26,9 @@ import (
 )
 
 type Server struct {
-	config           *common.MigrationConf
-	tasks            []*common.MigrationTask
+	config *common.MigrationConf
+	tasks  []*common.MigrationTask // defined in config file
+
 	pendingTasks     chan common.MigrationTask
 	completed        chan common.TaskResult
 	results          []common.TaskResult
@@ -34,38 +36,48 @@ type Server struct {
 	mu               sync.RWMutex
 	done             chan struct{}
 	completedCounter uint64
+
+	serverSideListing bool
+	pendingSubTasks   *sync.Map // task id -> subtask chan
+	subTaskCounterMap *sync.Map // task id -> counter
 }
 
 func NewServer(cfgFile string) (*Server, error) {
 	config := common.LoadConfigFromFile(cfgFile)
 	common.CheckSetConfig(config)
-	tasks, err := common.ParseTaskFile(config.GlobalConfig.TasksFile)
+	tasks, err := common.ParseTaskFile(config)
 	if err != nil {
 		return nil, err
 	}
 	server := &Server{
-		config:       config,
-		tasks:        tasks,
-		pendingTasks: make(chan common.MigrationTask, len(tasks)),
-		completed:    make(chan common.TaskResult, len(tasks)),
-		clients:      make(map[string]net.Conn),
-		done:         make(chan struct{}),
+		config:  config,
+		clients: make(map[string]net.Conn),
+		done:    make(chan struct{}),
 	}
-	timestamp := time.Now().UnixMilli()
-	for i := range tasks {
-		tasks[i].SourceFsType = config.GlobalConfig.SourceFsType
-		tasks[i].TargetFsType = config.GlobalConfig.TargetFsType
-		tasks[i].Bucket = config.ReportConfig.Bucket
-		tasks[i].RcloneFlags = config.GlobalConfig.RcloneFlags
-		tasks[i].S3Config = config.ReportConfig.S3Config
-		tasks[i].Timestamp = timestamp
+	if config.GlobalConfig.UltraLargeScale && config.GlobalConfig.ServerSideListing {
+		var validTasks []*common.MigrationTask
+		for _, task := range tasks {
+			if err := task.Check(); err != nil {
+				log.Warningf("task %d is invalid, source dir: %s, target dir: %s, error: %s", task.ID, task.SourceDir, task.TargetDir, err)
+			} else {
+				task.ID = len(validTasks) + 1 // 0 means no more tasks
+				validTasks = append(validTasks, task)
+			}
+		}
+		server.tasks = validTasks
+		// server.pendingTasks = make(chan common.MigrationTask, len(validTasks))
+		server.completed = make(chan common.TaskResult, len(validTasks))
+		server.serverSideListing = true
+		server.pendingSubTasks = new(sync.Map)
+		server.subTaskCounterMap = new(sync.Map)
+	} else {
+		server.tasks = tasks
+		server.pendingTasks = make(chan common.MigrationTask, len(tasks))
+		server.completed = make(chan common.TaskResult, len(tasks))
 
-		tasks[i].FileListDir = config.GlobalConfig.FileListDir
-		tasks[i].FileListDirFsType = config.GlobalConfig.FileListDirFsType
-		tasks[i].MaxFilesPerOutput = config.GlobalConfig.MaxFilesPerOutput
-		tasks[i].Concurrency = config.GlobalConfig.Concurrency
-
-		server.pendingTasks <- *tasks[i]
+		for _, task := range server.tasks {
+			server.pendingTasks <- *task
+		}
 	}
 	return server, nil
 }
@@ -80,6 +92,9 @@ func (s *Server) Start(serverPort int) error {
 	log.Infof("Server started on :%d", serverPort)
 
 	go s.handleResults()
+	if s.serverSideListing {
+		go s.handleServerListing()
+	}
 
 	for {
 		select {
@@ -102,6 +117,65 @@ func (s *Server) Start(serverPort int) error {
 
 			go s.handleClient(conn, clientID)
 		}
+	}
+}
+
+func (s *Server) handleServerListing() error {
+	hostname, _ := os.Hostname()
+	serverID := fmt.Sprintf("%s-%d", hostname, os.Getpid())
+
+	for i, task := range s.tasks {
+		filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), serverID)
+		if err := os.MkdirAll(filesDir, 0755); err != nil {
+			return fmt.Errorf("failed to create output directory: %v", err)
+		}
+
+		outputPrefix := filepath.Base(task.FileListPath)
+		if task.FileListPath == "" {
+			outputPrefix = filepath.Base(task.SourceDir)
+		}
+		// Get file channel from FindFiles
+		fileChan, err := common.FindFiles(task.SourceDir, task.TargetDir, task.FileListPath,
+			0,            /* list concurrency (let FindFiles decide) */
+			filesDir,     /*output directory*/
+			outputPrefix, /*output prefix*/
+			task.MaxFilesPerOutput /*max files per output*/)
+		if err != nil {
+			return fmt.Errorf("failed to find files: %v", err)
+		}
+		go s.collectFileList(i, fileChan)
+	}
+	return nil
+}
+
+func (s *Server) collectFileList(index int, fileChan <-chan string) {
+	var (
+		task    = s.tasks[index]
+		counter = 0
+		taskID  = task.ID
+	)
+	for {
+		f, ok := <-fileChan
+		if !ok {
+			s.subTaskCounterMap.Store(taskID, counter)
+			return
+		}
+		subTask, err := task.DeepCopyJSON()
+		if err != nil {
+			panic(err)
+		}
+		subTask.SubTaskID = counter + 1 // start from 1
+		subTask.FileFrom = f
+
+		if subTaskChanV, ok := s.pendingSubTasks.Load(taskID); ok {
+			subTaskChan := subTaskChanV.(chan common.MigrationTask)
+			subTaskChan <- *subTask
+		} else {
+			subTaskChan := make(chan common.MigrationTask, 1024) // 1024 is enough
+			subTaskChan <- *subTask
+			s.pendingSubTasks.Store(taskID, subTaskChan)
+		}
+		counter++
 	}
 }
 
@@ -130,26 +204,102 @@ func (s *Server) handleClient(conn net.Conn, clientID string) {
 		log.Infof("Received task request from client %s", clientID)
 
 		var (
-			task     common.MigrationTask
-			duration time.Duration
-			start    = time.Now()
+			start              = time.Now()
+			taskToSend         *common.MigrationTask
+			currentSubTaskChan chan common.MigrationTask
 		)
-		select {
-		case task = <-s.pendingTasks:
-			log.Infof("Sending task %d to client %s", task.ID, clientID)
-			if err := encoder.Encode(task); err != nil {
-				log.Errorf("Error sending task to client %s: %v", clientID, err)
-				// re-push to pending tasks
-				s.pendingTasks <- task
+		if s.serverSideListing {
+			// Iterate through all tasks to find one with available subtasks
+			for {
+				for _, task := range s.tasks {
+					taskID := task.ID
+					// Check if subtask channel exists for this task
+					if subTaskChanV, ok := s.pendingSubTasks.Load(taskID); ok {
+						subTaskChan := subTaskChanV.(chan common.MigrationTask)
+
+						// Check if there are subtasks available in the channel
+						select {
+						case subTask := <-subTaskChan:
+							// Found an available subtask
+							taskToSend = &subTask
+							currentSubTaskChan = subTaskChan
+
+							log.Infof("Assigned task %d to client %s, sending subtask %d",
+								taskID, clientID, subTask.SubTaskID)
+						default:
+							// Channel is empty, check if all subtasks have been sended/completed
+							if _, ok := s.subTaskCounterMap.Load(taskID); ok {
+								log.Debugf("Task %d already sended all subtasks", taskID)
+								s.pendingSubTasks.Delete(taskID)
+							}
+						}
+					} else {
+						if _, ok := s.subTaskCounterMap.Load(taskID); ok {
+							log.Debugf("Task %d has been removed from pending tasks", taskID)
+						} else {
+							// file list is still being generated
+							log.Infof("Task %d file list is still being generated", taskID)
+						}
+						continue
+					}
+					if taskToSend != nil {
+						break
+					}
+				}
+
+				// If an available subtask was found
+				if taskToSend != nil {
+					break
+				}
+				// Check if all tasks have been completed
+				allTasksDone := true
+				for _, task := range s.tasks {
+					taskID := task.ID
+					if _, ok := s.subTaskCounterMap.Load(taskID); !ok {
+						allTasksDone = false
+						break
+					}
+				}
+
+				if allTasksDone {
+					log.Infof("All tasks completed, closing connection with client %s", clientID)
+					if err := encoder.Encode(common.MigrationTask{ID: 0}); err != nil {
+						log.Errorf("Error sending completion to client %s: %v", clientID, err)
+					}
+					return
+				}
+
+				// No available subtasks at the moment, wait a bit
+				log.Infof("No available subtasks for client %s, waiting...", clientID)
+				time.Sleep(2 * time.Second)
+			}
+		} else {
+			select {
+			case task := <-s.pendingTasks:
+				taskToSend = &task
+			default:
+				// no more tasks
+				log.Infof("No more tasks for client %s", clientID)
+				if err := encoder.Encode(common.MigrationTask{ID: 0}); err != nil {
+					log.Errorf("Error sending no-task to client %s: %v", clientID, err)
+				}
 				return
 			}
-		default:
-			// no more tasks
-			log.Infof("No more tasks for client %s", clientID)
-			if err := encoder.Encode(common.MigrationTask{ID: 0}); err != nil {
-				log.Errorf("Error sending no-task to client %s: %v", clientID, err)
+		}
+		if err := encoder.Encode(*taskToSend); err != nil {
+			log.Errorf("Error sending task to client %s: %v", clientID, err)
+			// re-push to pending tasks
+			if s.serverSideListing {
+				currentSubTaskChan <- *taskToSend
+			} else {
+				s.pendingTasks <- *taskToSend
 			}
 			return
+		} else if s.serverSideListing {
+			log.Infof("Sending task %d(%d) with %s file from %s to client %s", taskToSend.ID,
+				taskToSend.SubTaskID, taskToSend.SourceDir, taskToSend.FileFrom, clientID)
+		} else {
+			log.Infof("Sending task %d with %s to client %s", taskToSend.ID, taskToSend.SourceDir, clientID)
 		}
 		var result common.TaskResult
 		if err := decoder.Decode(&result); err != nil {
@@ -158,39 +308,121 @@ func (s *Server) handleClient(conn net.Conn, clientID string) {
 			}
 			return
 		}
-		duration = time.Since(start)
-		result.Duration = duration
+		result.StartTime = start
+		result.EndTime = time.Now()
+		result.Duration = time.Since(start)
 		result.ClientID = clientID
 		if result.Success {
-			log.Infof("task(%d) has been migrated from %s to %s successfully", task.ID, task.SourceDir, task.TargetDir)
+			if s.serverSideListing {
+				log.Infof("task(%d/%d) with file from %s has been migrated from %s to %s successfully",
+					taskToSend.ID, taskToSend.SubTaskID, taskToSend.FileFrom, taskToSend.SourceDir, taskToSend.TargetDir)
+			} else {
+				log.Infof("task(%d) has been migrated from %s to %s successfully", taskToSend.ID, taskToSend.SourceDir, taskToSend.TargetDir)
+			}
 		} else {
-			log.Errorf("failed to migrate task(%d) from %s to %s", task.ID, task.SourceDir, task.TargetDir)
+			if s.serverSideListing {
+				log.Errorf("failed to migrate task(%d/%d) with file from %s from %s to %s", taskToSend.ID,
+					taskToSend.SubTaskID, taskToSend.FileFrom, taskToSend.SourceDir, taskToSend.TargetDir)
+			} else {
+				log.Errorf("failed to migrate task(%d) from %s to %s", taskToSend.ID, taskToSend.SourceDir, taskToSend.TargetDir)
+			}
 		}
 		s.completed <- result
 	}
 }
 
 func (s *Server) handleResults() {
+	var (
+		taskStartTimeMap = make(map[int]time.Time)
+		taskEndTimeMap   = make(map[int]time.Time)
+		taskCounterMap   = make(map[int]int)
+		taskResultsMap   = make(map[int][]common.TaskResult)
+		failedTaskMap    = make(map[int][]string)
+	)
 	for result := range s.completed {
-		log.Infof("Task %d completed by client %s: success=%v, message=%s",
+		var lastResult *common.TaskResult
+		if t, ok := taskStartTimeMap[result.TaskID]; !ok {
+			taskStartTimeMap[result.TaskID] = result.StartTime
+			taskEndTimeMap[result.TaskID] = result.EndTime
+		} else {
+			if t.After(result.StartTime) {
+				taskStartTimeMap[result.TaskID] = result.StartTime
+			}
+			if taskEndTimeMap[result.TaskID].Before(result.EndTime) {
+				taskEndTimeMap[result.TaskID] = result.EndTime
+			}
+		}
+		if !result.Success {
+			failedTaskMap[result.TaskID] = append(failedTaskMap[result.TaskID], result.Message)
+		}
+		taskCounterMap[result.TaskID] = taskCounterMap[result.TaskID] + 1
+		taskResultsMap[result.TaskID] = append(taskResultsMap[result.TaskID], result)
+		info := fmt.Sprintf("Task %d completed by client %s: success: %v, message: %s",
 			result.TaskID, result.ClientID, result.Success, result.Message)
+		if s.serverSideListing {
+			info = fmt.Sprintf("Task %d/%d with file from %s completed by client %s: success: %v, message: %s",
+				result.TaskID, result.SubTaskID, result.FileFrom, result.ClientID, result.Success, result.Message)
+		}
+		log.Info(info)
 
-		atomic.AddUint64(&s.completedCounter, 1)
+		if s.serverSideListing {
+			counter, ok := s.subTaskCounterMap.Load(result.TaskID)
+			if ok && taskCounterMap[result.TaskID] == counter {
+				atomic.AddUint64(&s.completedCounter, 1)
+				lastResult = &common.TaskResult{
+					SourceDir: result.SourceDir,
+					TargetDir: result.TargetDir,
+					TaskID:    result.TaskID,
+					Success:   true,
+					StartTime: taskStartTimeMap[result.TaskID],
+					EndTime:   taskEndTimeMap[result.TaskID],
+					Duration:  taskEndTimeMap[result.TaskID].Sub(taskStartTimeMap[result.TaskID]),
+				}
+				failedMessages := failedTaskMap[result.TaskID]
+				if len(failedMessages) > 0 {
+					lastResult.Success = false
+					if len(failedMessages) == 1 {
+						lastResult.Message = fmt.Sprintf("1 file failed: %v", failedMessages[0])
+					} else {
+
+						// Create a summary error message
+						errorSummary := fmt.Sprintf("%d files failed. First few errors:", len(failedMessages))
+						for i := 0; i < len(failedMessages) && i < 3; i++ {
+							errorSummary += fmt.Sprintf("\n- %v", failedMessages[i])
+						}
+						if len(failedMessages) > 3 {
+							errorSummary += fmt.Sprintf("\n... and %d more errors", len(failedMessages)-3)
+						}
+						lastResult.Message = errorSummary
+					}
+				}
+			}
+		} else {
+			atomic.AddUint64(&s.completedCounter, 1)
+		}
 
 		s.writeResultToCSV(result)
-
 		s.results = append(s.results, result)
 
-		// if !result.Success {
-		// TODO
-		// 	log.Printf("Task %d failed, will retry later", result.TaskID)
-		// }
-		if len(s.results) == len(s.tasks) {
+		if s.serverSideListing && lastResult != nil {
+			s.writeResultToCSV(*lastResult)
+			s.results = append(s.results, *lastResult)
+		}
+
+		completed := atomic.LoadUint64(&s.completedCounter)
+		if int(completed) == len(s.tasks) {
 			s.generateResults(s.results)
 			close(s.done)
 		}
 		if s.config.GlobalConfig.FeishuURL != "" {
-			content := NewFormatter().FormatMigrationMessage(result)
+			var content string
+			if s.serverSideListing {
+				if lastResult != nil {
+					content = NewFormatter().FormatMigrationMessage(*lastResult)
+				}
+			} else {
+				content = NewFormatter().FormatMigrationMessage(result)
+			}
 			err := common.SendFeishuCard(
 				s.config.GlobalConfig.FeishuURL,
 				content,
@@ -223,6 +455,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 	if created {
 		err = csvwriter.Write([]string{
 			"id",
+			"subtask id",
 			"source dir",
 			"target dir",
 			"client id",
@@ -230,6 +463,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 			"success",
 			"split pattern",
 			"split files",
+			"file from",
 			"log file",
 			"message",
 		})
@@ -241,6 +475,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 
 	err = csvwriter.Write([]string{
 		fmt.Sprintf("%d", result.TaskID),
+		fmt.Sprintf("%d", result.SubTaskID),
 		result.SourceDir,
 		result.TargetDir,
 		result.ClientID,
@@ -248,6 +483,7 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 		fmt.Sprintf("%t", result.Success),
 		result.SplitPattern,
 		fmt.Sprintf("%d", result.SplitFiles),
+		result.FileFrom,
 		result.LogFile,
 		result.Message,
 	})
@@ -303,6 +539,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 		}
 		t.AppendHeader(table.Row{
 			"id",
+			"subtask id",
 			"source dir",
 			"target dir",
 			"client id",
@@ -310,12 +547,14 @@ func (s *Server) generateResults(results []common.TaskResult) {
 			"success",
 			"split pattern",
 			"split files",
+			"file from",
 			"log file",
 			"message",
 		})
 		for _, result := range results {
 			t.AppendRow(table.Row{
 				fmt.Sprintf("%d", result.TaskID),
+				fmt.Sprintf("%d", result.SubTaskID),
 				result.SourceDir,
 				result.TargetDir,
 				result.ClientID,
@@ -323,6 +562,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 				fmt.Sprintf("%t", result.Success),
 				result.SplitPattern,
 				fmt.Sprintf("%d", result.SplitFiles),
+				result.FileFrom,
 				result.LogFile,
 				result.Message,
 			})
@@ -341,7 +581,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 		t.SortBy([]table.SortBy{
 			{
 				Name: "id",
-				Mode: table.Asc,
+				Mode: table.AscNumericAlpha,
 			},
 		})
 		switch strings.ToLower(format) {

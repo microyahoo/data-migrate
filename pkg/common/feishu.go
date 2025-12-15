@@ -94,6 +94,9 @@ func (s *FeishuCardSender) Send(content string) error {
 }
 
 func SendFeishuCard(webhookURL, content string) error {
+	if content == "" {
+		return nil
+	}
 	sender := NewFeishuCardSender(webhookURL)
 	return sender.Send(content)
 }

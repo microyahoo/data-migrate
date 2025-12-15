@@ -43,6 +43,8 @@ func (s *configFileTestSuite) Test_loadConfigFromYAMLFile() {
     endpoint: http://10.9.8.72:80
     skipSSLverify: true
 global_config:
+  ultra_large_scale: true # indicate ultra-large-scale task
+  server_side_listing: true # Whether to list files on server side
   feishu_url: "feishu"
   source_fs_type: gpfs
   target_fs_type: yrfs_ec
@@ -73,6 +75,8 @@ global_config:
 				},
 			},
 			GlobalConfig: &GlobalConfiguration{
+				UltraLargeScale:   true,
+				ServerSideListing: true,
 				FeishuURL:         "feishu",
 				SourceFsType:      "gpfs",
 				TargetFsType:      "yrfs_ec",
@@ -133,6 +137,8 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   }
 },
 "global_config": {
+  "ultra_large_scale": true,
+  "server_side_listing": true,
   "feishu_url": "feishu",
   "source_fs_type": "gpfs",
   "target_fs_type": "yrfs_ec",
@@ -163,6 +169,8 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				},
 			},
 			GlobalConfig: &GlobalConfiguration{
+				UltraLargeScale:   true,
+				ServerSideListing: true,
 				FeishuURL:         "feishu",
 				SourceFsType:      "gpfs",
 				TargetFsType:      "yrfs_ec",
