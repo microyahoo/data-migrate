@@ -20,4 +20,9 @@ type TaskResult struct {
 	SplitFiles   int           `json:"split_files"`
 	LogFile      string        `json:"log_file"`
 	Duration     time.Duration `json:"duration"`
+
+	SubTaskID int       `json:"sub_task_id"`
+	FileFrom  string    `json:"file_from"`
+	StartTime time.Time `json:"start_time"`
+	EndTime   time.Time `json:"end_time"`
 }

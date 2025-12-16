@@ -139,6 +139,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 					root := filepath.Join(baseDir, subdir)
 					err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 						if err != nil {
+							// TODO: record it
 							log.Warningf("Warning: cannot access %s: %v", path, err)
 							return nil
 						}
@@ -210,7 +211,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 		outputMgr.FinalizeCurrentFile()
 
 		totalFiles, fileCount := outputMgr.GetStats()
-		log.Infof("Export completed: %d files in %d output files", totalFiles, fileCount)
+		log.Infof("Export %s completed: %d files in %d output files", baseDir, totalFiles, fileCount)
 	}(fileEntryList)
 
 	return outputFileChan, nil
@@ -262,8 +263,8 @@ func FindFilesInBaseDir(baseDir string) (string, []os.DirEntry, error) {
 		}
 	}
 
-	log.Infof("Found %d files directly in base directory", len(fileEntries))
-	log.Infof("Found %d subdirectories in base directory", len(dirEntries))
+	log.Infof("Found %d files directly in base directory %s", len(fileEntries), baseDir)
+	log.Infof("Found %d subdirectories in base directory %s", len(dirEntries), baseDir)
 
 	// Write files directly in baseDir to filesInBaseDirFile
 	for _, file := range fileEntries {
@@ -414,6 +415,7 @@ func (om *OutputManager) FinalizeCurrentFile() {
 			}
 		}
 		om.reset()
+		om.fileNum++
 	}
 }
 
