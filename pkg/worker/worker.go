@@ -187,23 +187,6 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	return result
 }
 
-// handleLogFile should also return errors
-func (w *Worker) handleLogFile(logFile string, task *common.MigrationTask, logFiles *[]string) error {
-	f, err := os.Open(logFile)
-	if err != nil {
-		return fmt.Errorf("failed to open rclone log file %s: %v", logFile, err)
-	}
-	defer f.Close()
-
-	s3LogFileKey := fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
-	if err := w.uploadFile(f, task.Bucket, task.S3Config, s3LogFileKey); err != nil {
-		return fmt.Errorf("failed to upload rclone log file %s to s3: %v", logFile, err)
-	}
-
-	*logFiles = append(*logFiles, s3LogFileKey)
-	return nil
-}
-
 // uploadLogFile uploads a log file to S3
 func (w *Worker) uploadLogFile(logFile string, task *common.MigrationTask, s3Key string) error {
 	f, err := os.Open(logFile)

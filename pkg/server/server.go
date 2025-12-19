@@ -626,13 +626,12 @@ func (s *Server) generateResults(results []common.TaskResult) {
 	}
 }
 
-// Formatter 消息格式化器
+// Formatter
 type Formatter struct {
-	SeparatorChar string // 分隔符字符
-	SeparatorLen  int    // 分隔符长度
+	SeparatorChar string
+	SeparatorLen  int
 }
 
-// NewFormatter 创建格式化器
 func NewFormatter() *Formatter {
 	return &Formatter{
 		SeparatorChar: "*",
@@ -640,16 +639,13 @@ func NewFormatter() *Formatter {
 	}
 }
 
-// writeLine 辅助函数：写入一行
 func writeLine(builder *strings.Builder, label, value string) {
 	builder.WriteString(fmt.Sprintf("%s: %s", label, value) + "\n")
 }
 
-// FormatMigrationMessage 格式化迁移消息
 func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
 	var builder strings.Builder
 
-	// 标题行
 	status := "成功"
 	if !msg.Success {
 		status = "失败"
@@ -657,11 +653,9 @@ func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
 	titleLine := fmt.Sprintf("迁移任务状态: %s", status)
 	builder.WriteString(titleLine + "\n")
 
-	// 分隔线
 	separator := strings.Repeat(f.SeparatorChar, f.SeparatorLen)
 	builder.WriteString(separator + "\n")
 
-	// 统计信息
 	writeLine(&builder, "source dir", msg.SourceDir)
 	writeLine(&builder, "target dir", msg.TargetDir)
 	writeLine(&builder, "duration", fmt.Sprintf("%s", msg.Duration))
@@ -672,7 +666,6 @@ func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
 	writeLine(&builder, "log file", msg.LogFile)
 	writeLine(&builder, "message", msg.Message)
 
-	// 分隔线
 	builder.WriteString(separator + "\n")
 
 	return builder.String()

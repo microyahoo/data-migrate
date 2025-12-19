@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	log "github.com/sirupsen/logrus"
+	// "golang.org/x/sync/errgroup"
 )
 
 func GetFilesystemType(path string) (string, error) {
@@ -87,6 +88,9 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 	// Handle empty subdirsFile case
 	if subdirsFile == "" {
 		subdirsFile, fileEntryList, err = FindFilesInBaseDir(baseDir)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Open subdirectories file
@@ -123,8 +127,18 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 		defer outputMgr.Close()
 		defer close(outputFileChan) // Ensure channel is closed
 
-		subdirCh := make(chan string, concurrency*2)
-		wg := &sync.WaitGroup{}
+		var (
+			subdirCh = make(chan string, concurrency*2)
+			wg       = &sync.WaitGroup{}
+			// g          = errgroup.Group{}
+			// errs       []error
+			errSubdirs []string
+			mu         sync.Mutex
+		)
+		// g.SetLimit(concurrency)
+		// g.Go(func() error {
+		// 	return nil
+		// })
 
 		// Start worker goroutines
 		for i := 0; i < concurrency; i++ {
@@ -151,7 +165,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 
 						rel, err := filepath.Rel(baseDir, path)
 						if err != nil {
-							return nil
+							return err
 						}
 
 						// Write to output file
@@ -162,8 +176,11 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 					})
 
 					if err != nil {
-						// TODO: error
 						log.Errorf("error walking directory %s: %v", root, err)
+						mu.Lock()
+						// errs = append(errs, err)
+						errSubdirs = append(errSubdirs, subdir)
+						mu.Unlock()
 					}
 				}
 			}(i)
@@ -187,8 +204,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 		}
 
 		if err := scanner.Err(); err != nil {
-			// TODO: error
-			log.Errorf("failed to read subdirs file: %v", err)
+			panic(fmt.Sprintf("failed to read subdirs file: %v", err))
 		}
 
 		close(subdirCh)
@@ -202,8 +218,7 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 
 			// Write to output file
 			if err := outputMgr.WriteLine(e.Name()); err != nil {
-				// TODO: error
-				log.Errorf("failed to write line: %s", err)
+				panic(fmt.Sprintf("failed to write line: %s", err))
 			}
 		}
 
@@ -212,9 +227,45 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 
 		totalFiles, fileCount := outputMgr.GetStats()
 		log.Infof("Export %s completed: %d files in %d output files", baseDir, totalFiles, fileCount)
+
+		if len(errSubdirs) > 0 {
+			if e := writeErrDirs(errSubdirs); e != nil {
+				log.Warningf("failed to write err subdirs: %s", e)
+			}
+		}
 	}(fileEntryList)
 
 	return outputFileChan, nil
+}
+
+func writeErrDirs(dirs []string) error {
+	hostname, _ := os.Hostname()
+	id := fmt.Sprintf("%s-%d", hostname, os.Getpid())
+	// Create temporary directory for subdirs
+	tempDir, err := os.MkdirTemp("", fmt.Sprintf("error_subdirs_%s_*", id))
+	if err != nil {
+		return fmt.Errorf("failed to create temp directory: %v", err)
+	}
+
+	subdirsFile := filepath.Join(tempDir, "error_subdirs.txt")
+	subdirsWriter, err := os.Create(subdirsFile)
+	if err != nil {
+		return fmt.Errorf("failed to create subdirs list: %v", err)
+	}
+	defer subdirsWriter.Close()
+	// Write subdirectories to subdirs file
+	for _, dir := range dirs {
+		if _, err := subdirsWriter.WriteString(dir + "\n"); err != nil {
+			return fmt.Errorf("failed to write directory entry: %v", err)
+		}
+	}
+
+	// Flush files
+	if err := subdirsWriter.Sync(); err != nil {
+		log.Warningf("Failed to sync files list: %v", err)
+		return err
+	}
+	return nil
 }
 
 // FindFilesInBaseDir finds all files in base directory and its subdirectories
