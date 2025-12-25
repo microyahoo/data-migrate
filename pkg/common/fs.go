@@ -147,10 +147,13 @@ func FindFiles(baseDir, targetDir, subdirsFile string, concurrency int, outputDi
 				defer wg.Done()
 
 				for subdir := range subdirCh {
+					root := filepath.Join(baseDir, subdir)
+					if _, e := os.Stat(root); os.IsNotExist(e) {
+						continue
+					}
 					if e := os.Mkdir(filepath.Join(targetDir, subdir), 0755); e != nil && !os.IsExist(e) {
 						log.Warningf("failed to mkdir %s: %s", filepath.Join(targetDir, subdir), e)
 					}
-					root := filepath.Join(baseDir, subdir)
 					err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 						if err != nil {
 							// TODO: record it
