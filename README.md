@@ -68,7 +68,9 @@ global_config:
   server_side_listing: false # Whether to list files on server side
 
   feishu_url: "feishu_url"
-  source_fs_type: gpfs
+  source_fs_types:
+    - yrfs_ec
+    - gpfs
   target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt
 

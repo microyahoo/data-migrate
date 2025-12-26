@@ -436,10 +436,16 @@ func (s *Server) handleResults() {
 	}
 }
 
-func (s *Server) GetProgress() (int, int) {
+func (s *Server) GetProgress() (int, int, []string) {
+	var clients []string
+	s.mu.Lock()
+	for clientID := range s.clients {
+		clients = append(clients, clientID)
+	}
+	s.mu.Unlock()
 	total := len(s.tasks)
 	completed := atomic.LoadUint64(&s.completedCounter)
-	return int(completed), total
+	return int(completed), total, clients
 }
 
 func (s *Server) writeResultToCSV(result common.TaskResult) {

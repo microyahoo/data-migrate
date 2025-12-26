@@ -13,13 +13,15 @@ global_config:
   server_side_listing: false # Whether to list files on server side
 
   feishu_url: "feishu_url"
-  source_fs_type: gpfs
+  source_fs_types:
+    - yrfs_ec
+    - gpfs
   target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
   file_list_dir_fs_type: yrfs_ec
-  max_files_per_output: 1000000
+  max_files_per_output: 500000
   concurrency: 3
 
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
