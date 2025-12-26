@@ -13,7 +13,9 @@ global_config:
   server_side_listing: false # Whether to list files on server side
 
   feishu_url: "feishu_url"
-  source_fs_type: xfs
+  source_fs_types:
+    - xfs
+    - gpfs
   target_fs_type: xfs
   tasks_file: deploy/data_sources.test.txt
 

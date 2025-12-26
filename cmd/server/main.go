@@ -71,8 +71,8 @@ func run() {
 		defer ticker.Stop()
 
 		for range ticker.C {
-			completed, total := server.GetProgress()
-			log.Infof("Progress: %d/%d tasks completed", completed, total)
+			completed, total, clients := server.GetProgress()
+			log.Infof("Progress: %d/%d tasks completed, clients: %s", completed, total, clients)
 		}
 	}()
 	server.Start(serverPort)
