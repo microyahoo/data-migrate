@@ -173,14 +173,14 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	if len(logFiles) > 0 {
 		logFile = logFiles[0] // simplify it
 	}
+	result.SplitPattern = splitPattern
+	result.SplitFiles = splitFiles
 	if err != nil {
 		result.Success = false
 		result.Message = err.Error()
 	} else {
 		result.LogFile = logFile
 		result.Success = true
-		result.SplitPattern = splitPattern
-		result.SplitFiles = splitFiles
 		result.Message = message
 	}
 
@@ -205,8 +205,8 @@ func (w *Worker) uploadLogFile(logFile string, task *common.MigrationTask, s3Key
 // executeWithFileList executes rclone with file list using concurrent processing
 // Returns: split pattern and file counts, and error
 func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []string, logFiles *[]string) (string, int, error) {
-	// Create directory for output files
-	filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), w.clientID)
+	// Create directory for output files with "fileListDir/timestamp/client_id/task_id/"
+	filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), w.clientID, fmt.Sprintf("%d", task.ID))
 	if err := os.MkdirAll(filesDir, 0755); err != nil {
 		return "", 0, fmt.Errorf("failed to create output directory: %v", err)
 	}
@@ -396,7 +396,7 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 	// Return error if any files failed
 	if len(collectedErrors) > 0 {
 		if len(collectedErrors) == 1 {
-			return "", 0, fmt.Errorf("1 file failed: %v", collectedErrors[0])
+			return splitPattern, totalFiles, fmt.Errorf("1 file failed: %v", collectedErrors[0])
 		}
 
 		// Create a summary error message
@@ -413,7 +413,7 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 			log.Errorf("Failed files: %v", failedFiles)
 		}
 
-		return "", 0, fmt.Errorf(errorSummary)
+		return splitPattern, totalFiles, fmt.Errorf("%s", errorSummary)
 	}
 
 	return splitPattern, totalFiles, nil

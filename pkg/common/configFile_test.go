@@ -46,7 +46,9 @@ global_config:
   ultra_large_scale: true # indicate ultra-large-scale task
   server_side_listing: true # Whether to list files on server side
   feishu_url: "feishu"
-  source_fs_type: gpfs
+  source_fs_types:
+    - yrfs
+    - gpfs
   target_fs_type: yrfs_ec
   tasks_file: deploy/data_sources.txt
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
@@ -78,7 +80,7 @@ global_config:
 				UltraLargeScale:   true,
 				ServerSideListing: true,
 				FeishuURL:         "feishu",
-				SourceFsType:      "gpfs",
+				SourceFsTypes:     []string{"yrfs", "gpfs"},
 				TargetFsType:      "yrfs_ec",
 				TasksFile:         "deploy/data_sources.txt",
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
@@ -140,7 +142,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   "ultra_large_scale": true,
   "server_side_listing": true,
   "feishu_url": "feishu",
-  "source_fs_type": "gpfs",
+  "source_fs_types": ["yrfs", "gpfs"],
   "target_fs_type": "yrfs_ec",
   "tasks_file": "deploy/data_sources.txt",
   "file_list_dir": "/mnt/yrfs/public-data/user/zhengliang/",
@@ -172,7 +174,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				UltraLargeScale:   true,
 				ServerSideListing: true,
 				FeishuURL:         "feishu",
-				SourceFsType:      "gpfs",
+				SourceFsTypes:     []string{"yrfs", "gpfs"},
 				TargetFsType:      "yrfs_ec",
 				TasksFile:         "deploy/data_sources.txt",
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
