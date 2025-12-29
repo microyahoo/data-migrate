@@ -21,16 +21,22 @@ import (
 	"github.com/microyahoo/data-migrate/pkg/common"
 )
 
+const (
+	defaultConcurrency = 3
+)
+
 type Worker struct {
-	serverAddr string
-	clientID   string
+	serverAddr  string
+	clientID    string
+	concurrency int
 }
 
-func NewWorker(serverAddr string) *Worker {
+func NewWorker(serverAddr string, concurrency int) *Worker {
 	hostname, _ := os.Hostname()
 	return &Worker{
-		serverAddr: serverAddr,
-		clientID:   fmt.Sprintf("%s-%d", hostname, os.Getpid()),
+		serverAddr:  serverAddr,
+		clientID:    fmt.Sprintf("%s-%d", hostname, os.Getpid()),
+		concurrency: concurrency,
 	}
 }
 
@@ -228,7 +234,11 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 	}
 
 	// Configurable parameters
-	concurrency := task.Concurrency  // Number of concurrent rclone processes
+	concurrency := min(w.concurrency, task.Concurrency) // Number of concurrent rclone processes
+	if concurrency <= 0 {
+		concurrency = defaultConcurrency
+	}
+	log.Infof("set concurrency to %d", concurrency)
 	bufferSize := concurrency * 1000 // Buffer size for work channel
 
 	var (

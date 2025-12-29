@@ -16,6 +16,7 @@ import (
 var (
 	debug, trace  bool
 	serverAddress string
+	concurrency   int
 )
 
 func main() {
@@ -49,6 +50,7 @@ func newCommand() *cobra.Command {
 	cmds.Flags().BoolVar(&trace, "trace", viper.GetBool("TRACE"), "enable trace log output")
 	cmds.Flags().BoolVar(&debug, "debug", viper.GetBool("DEBUG"), "enable debug log output")
 	cmds.Flags().StringVar(&serverAddress, "server.address", viper.GetString("SERVERADDRESS"), "Data-migrate Server IP and Port in the form '191.168.1.1:2000'")
+	cmds.Flags().IntVar(&concurrency, "concurrency", viper.GetInt("CONCURRENCY"), "Concurrency for rclone tasks, default 3")
 
 	// cmds.MarkFlagRequired("server.address")
 
@@ -70,7 +72,8 @@ func run() {
 	log.Debugf("viper settings: %+v", viper.AllSettings())
 	log.Debugf("data-migrate worker serverAddress: %s", serverAddress)
 
-	worker.NewWorker(serverAddress).Start()
+	// TODO: functional parameters
+	worker.NewWorker(serverAddress, concurrency).Start()
 }
 
 func init() {
