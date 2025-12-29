@@ -10,6 +10,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	log "github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type MigrationConf struct {
@@ -19,9 +20,9 @@ type MigrationConf struct {
 
 type GlobalConfiguration struct {
 	FeishuURL         string       `yaml:"feishu_url" json:"feishu_url"`
-	SourceFsType      string       `yaml:"source_fs_type" json:"source_fs_type"` // cpfs
-	TargetFsType      string       `yaml:"target_fs_type" json:"target_fs_type"` // yrfs_ec
-	TasksFile         string       `yaml:"tasks_file" json:"tasks_file"`         // eg: deploy/data_sources.txt
+	SourceFsTypes     []string     `yaml:"source_fs_types" json:"source_fs_types"` // cpfs, yrfs
+	TargetFsType      string       `yaml:"target_fs_type" json:"target_fs_type"`   // yrfs_ec
+	TasksFile         string       `yaml:"tasks_file" json:"tasks_file"`           // eg: deploy/data_sources.txt
 	RcloneFlags       *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
 	FileListDir       string       `yaml:"file_list_dir" json:"file_list_dir"`
 	FileListDirFsType string       `yaml:"file_list_dir_fs_type" json:"file_list_dir_fs_type"`
@@ -67,7 +68,7 @@ func CheckSetConfig(config *MigrationConf) {
 }
 
 func checkMigrationConfig(config *MigrationConf) error {
-	if config.GlobalConfig.SourceFsType == "" || config.GlobalConfig.TargetFsType == "" {
+	if len(config.GlobalConfig.SourceFsTypes) == 0 || config.GlobalConfig.TargetFsType == "" {
 		return fmt.Errorf("source and dest fs type need to be set")
 	}
 	if config.GlobalConfig.TasksFile == "" {
@@ -104,12 +105,12 @@ func LoadConfigFromFile(configFile string) *MigrationConf {
 
 // MigrationTask struct
 type MigrationTask struct {
-	ID           int    `json:"id"`             // task id
-	SourceDir    string `json:"source_dir"`     // Source directory
-	TargetDir    string `json:"target_dir"`     // Target directory
-	FileListPath string `json:"file_list_path"` // File list path
-	SourceFsType string `json:"source_fs_type"` // gpfs
-	TargetFsType string `json:"target_fs_type"` // yrfs_ec
+	ID            int      `json:"id"`              // task id
+	SourceDir     string   `json:"source_dir"`      // Source directory
+	TargetDir     string   `json:"target_dir"`      // Target directory
+	FileListPath  string   `json:"file_list_path"`  // File list path
+	SourceFsTypes []string `json:"source_fs_types"` // gpfs, yrfs
+	TargetFsType  string   `json:"target_fs_type"`  // yrfs_ec
 
 	FileListDir       string `json:"file_list_dir"`
 	FileListDirFsType string `json:"file_list_dir_fs_type"`
@@ -150,7 +151,8 @@ func (t *MigrationTask) Check() error {
 	if err != nil {
 		return err
 	}
-	if st != t.SourceFsType || tt != t.TargetFsType {
+	typeSet := sets.NewString(t.SourceFsTypes...)
+	if !typeSet.Has(st) || tt != t.TargetFsType {
 		return fmt.Errorf("actual source or target filesystem type not match(%s, %s)", st, tt)
 	}
 	if t.FileListPath != "" {
@@ -276,15 +278,15 @@ func ParseTaskFile(conf *MigrationConf) ([]*MigrationTask, error) {
 
 		// Create migration task
 		task := &MigrationTask{
-			SourceDir:    strings.TrimSpace(parts[0]),
-			TargetDir:    strings.TrimSpace(parts[1]),
-			ID:           lineNum,
-			SourceFsType: globalConfig.SourceFsType,
-			TargetFsType: globalConfig.TargetFsType,
-			Bucket:       reportConfig.Bucket,
-			RcloneFlags:  globalConfig.RcloneFlags,
-			S3Config:     reportConfig.S3Config,
-			Timestamp:    timestamp,
+			SourceDir:     strings.TrimSpace(parts[0]),
+			TargetDir:     strings.TrimSpace(parts[1]),
+			ID:            lineNum,
+			SourceFsTypes: globalConfig.SourceFsTypes,
+			TargetFsType:  globalConfig.TargetFsType,
+			Bucket:        reportConfig.Bucket,
+			RcloneFlags:   globalConfig.RcloneFlags,
+			S3Config:      reportConfig.S3Config,
+			Timestamp:     timestamp,
 
 			FileListDir:       globalConfig.FileListDir,
 			FileListDirFsType: globalConfig.FileListDirFsType,

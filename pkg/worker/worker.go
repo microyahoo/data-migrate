@@ -21,16 +21,22 @@ import (
 	"github.com/microyahoo/data-migrate/pkg/common"
 )
 
+const (
+	defaultConcurrency = 3
+)
+
 type Worker struct {
-	serverAddr string
-	clientID   string
+	serverAddr  string
+	clientID    string
+	concurrency int
 }
 
-func NewWorker(serverAddr string) *Worker {
+func NewWorker(serverAddr string, concurrency int) *Worker {
 	hostname, _ := os.Hostname()
 	return &Worker{
-		serverAddr: serverAddr,
-		clientID:   fmt.Sprintf("%s-%d", hostname, os.Getpid()),
+		serverAddr:  serverAddr,
+		clientID:    fmt.Sprintf("%s-%d", hostname, os.Getpid()),
+		concurrency: concurrency,
 	}
 }
 
@@ -173,14 +179,14 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	if len(logFiles) > 0 {
 		logFile = logFiles[0] // simplify it
 	}
+	result.SplitPattern = splitPattern
+	result.SplitFiles = splitFiles
 	if err != nil {
 		result.Success = false
 		result.Message = err.Error()
 	} else {
 		result.LogFile = logFile
 		result.Success = true
-		result.SplitPattern = splitPattern
-		result.SplitFiles = splitFiles
 		result.Message = message
 	}
 
@@ -205,8 +211,8 @@ func (w *Worker) uploadLogFile(logFile string, task *common.MigrationTask, s3Key
 // executeWithFileList executes rclone with file list using concurrent processing
 // Returns: split pattern and file counts, and error
 func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []string, logFiles *[]string) (string, int, error) {
-	// Create directory for output files
-	filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), w.clientID)
+	// Create directory for output files with "fileListDir/timestamp/client_id/task_id/"
+	filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), w.clientID, fmt.Sprintf("%d", task.ID))
 	if err := os.MkdirAll(filesDir, 0755); err != nil {
 		return "", 0, fmt.Errorf("failed to create output directory: %v", err)
 	}
@@ -228,7 +234,11 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 	}
 
 	// Configurable parameters
-	concurrency := task.Concurrency  // Number of concurrent rclone processes
+	concurrency := min(w.concurrency, task.Concurrency) // Number of concurrent rclone processes
+	if concurrency <= 0 {
+		concurrency = defaultConcurrency
+	}
+	log.Infof("set concurrency to %d", concurrency)
 	bufferSize := concurrency * 1000 // Buffer size for work channel
 
 	var (
@@ -396,7 +406,7 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 	// Return error if any files failed
 	if len(collectedErrors) > 0 {
 		if len(collectedErrors) == 1 {
-			return "", 0, fmt.Errorf("1 file failed: %v", collectedErrors[0])
+			return splitPattern, totalFiles, fmt.Errorf("1 file failed: %v", collectedErrors[0])
 		}
 
 		// Create a summary error message
@@ -413,7 +423,7 @@ func (w *Worker) executeWithFileList(task *common.MigrationTask, baseArgs []stri
 			log.Errorf("Failed files: %v", failedFiles)
 		}
 
-		return "", 0, fmt.Errorf(errorSummary)
+		return splitPattern, totalFiles, fmt.Errorf("%s", errorSummary)
 	}
 
 	return splitPattern, totalFiles, nil
