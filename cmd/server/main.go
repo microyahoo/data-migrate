@@ -67,12 +67,12 @@ func run() {
 		log.Fatalf("failed to create server: %s", err)
 	}
 	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
+		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 
 		for range ticker.C {
-			completed, total, clients := server.GetProgress()
-			log.Infof("Progress: %d/%d tasks completed, %d clients: %s", completed, total, len(clients), clients)
+			completed, total, success, failed, clients := server.GetProgress()
+			log.Infof("Progress: %d/%d tasks completed(succcess: %d, failed: %d), %d clients: %s", completed, total, success, failed, len(clients), clients)
 		}
 	}()
 	server.Start(serverPort)
