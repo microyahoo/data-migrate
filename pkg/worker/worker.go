@@ -33,6 +33,9 @@ type Worker struct {
 
 func NewWorker(serverAddr string, concurrency int) *Worker {
 	hostname, _ := os.Hostname()
+	if concurrency <= 0 {
+		concurrency = defaultConcurrency
+	}
 	return &Worker{
 		serverAddr:  serverAddr,
 		clientID:    fmt.Sprintf("%s-%d", hostname, os.Getpid()),

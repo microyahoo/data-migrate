@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -36,6 +37,8 @@ type Server struct {
 	mu               sync.RWMutex
 	done             chan struct{}
 	completedCounter uint64
+	successCounter   uint64
+	failedCounter    uint64
 
 	serverSideListing bool
 	pendingSubTasks   *sync.Map // task id -> subtask chan
@@ -353,7 +356,10 @@ func (s *Server) handleResults() {
 			}
 		}
 		if !result.Success {
+			atomic.AddUint64(&s.failedCounter, 1)
 			failedTaskMap[result.TaskID] = append(failedTaskMap[result.TaskID], result.Message)
+		} else {
+			atomic.AddUint64(&s.successCounter, 1)
 		}
 		taskCounterMap[result.TaskID] = taskCounterMap[result.TaskID] + 1
 		taskResultsMap[result.TaskID] = append(taskResultsMap[result.TaskID], result)
@@ -409,11 +415,6 @@ func (s *Server) handleResults() {
 			s.results = append(s.results, *lastResult)
 		}
 
-		completed := atomic.LoadUint64(&s.completedCounter)
-		if int(completed) == len(s.tasks) {
-			s.generateResults(s.results)
-			close(s.done)
-		}
 		if s.config.GlobalConfig.FeishuURL != "" {
 			var content string
 			if s.serverSideListing {
@@ -433,10 +434,34 @@ func (s *Server) handleResults() {
 				log.Infof("send feishu message successfully")
 			}
 		}
+		completed := atomic.LoadUint64(&s.completedCounter)
+		if int(completed) == len(s.tasks) {
+			s.generateResults(s.results)
+			close(s.done)
+		}
 	}
 }
 
-func (s *Server) GetProgress() (int, int, []string) {
+func (s *Server) sendSummary(key string) {
+	if s.config.GlobalConfig.FeishuURL == "" {
+		return
+	}
+	total := len(s.tasks)
+	success := atomic.LoadUint64(&s.successCounter)
+	failed := atomic.LoadUint64(&s.failedCounter)
+	content := NewFormatter().FormatTotalResults(total, int(success), int(failed), key)
+	err := common.SendFeishuCard(
+		s.config.GlobalConfig.FeishuURL,
+		content,
+	)
+	if err != nil {
+		log.Warningf("send feishu message failed: %v", err)
+	} else {
+		log.Infof("send feishu message successfully")
+	}
+}
+
+func (s *Server) GetProgress() (int, int, int, int, []string) {
 	var clients []string
 	s.mu.Lock()
 	for clientID := range s.clients {
@@ -445,7 +470,11 @@ func (s *Server) GetProgress() (int, int, []string) {
 	s.mu.Unlock()
 	total := len(s.tasks)
 	completed := atomic.LoadUint64(&s.completedCounter)
-	return int(completed), total, clients
+	success := atomic.LoadUint64(&s.successCounter)
+	failed := atomic.LoadUint64(&s.failedCounter)
+
+	slices.Sort(clients)
+	return int(completed), total, int(success), int(failed), clients
 }
 
 func (s *Server) writeResultToCSV(result common.TaskResult) {
@@ -620,16 +649,18 @@ func (s *Server) generateResults(results []common.TaskResult) {
 		log.WithError(e).Warning("Unable to open report file")
 		return
 	}
+	key := fmt.Sprintf("rclone/reports/data_migrate_results_%d.%s", timestamp, format)
 	defer f.Close()
 	_, e = client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s.config.ReportConfig.Bucket,
 		ACL:    types.ObjectCannedACLPublicRead,
-		Key:    aws.String(fmt.Sprintf("rclone/reports/data_migrate_results_%d.%s", timestamp, format)),
+		Key:    aws.String(key),
 		Body:   f,
 	})
 	if e != nil {
 		log.WithError(e).Warningf("Failed to upload report file to s3 bucket %s", s.config.ReportConfig.Bucket)
 	}
+	s.sendSummary(filepath.Join(s.config.ReportConfig.S3Config.Endpoint, s.config.ReportConfig.Bucket, key))
 }
 
 // Formatter
@@ -645,7 +676,7 @@ func NewFormatter() *Formatter {
 	}
 }
 
-func writeLine(builder *strings.Builder, label, value string) {
+func (f *Formatter) writeLine(builder *strings.Builder, label, value string) {
 	builder.WriteString(fmt.Sprintf("%s: %s", label, value) + "\n")
 }
 
@@ -662,16 +693,34 @@ func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
 	separator := strings.Repeat(f.SeparatorChar, f.SeparatorLen)
 	builder.WriteString(separator + "\n")
 
-	writeLine(&builder, "source dir", msg.SourceDir)
-	writeLine(&builder, "target dir", msg.TargetDir)
-	writeLine(&builder, "duration", fmt.Sprintf("%s", msg.Duration))
-	writeLine(&builder, "task id", fmt.Sprintf("%d", msg.TaskID))
-	writeLine(&builder, "client id", msg.ClientID)
-	writeLine(&builder, "split pattern", msg.SplitPattern)
-	writeLine(&builder, "split files", fmt.Sprintf("%d", msg.SplitFiles))
-	writeLine(&builder, "log file", msg.LogFile)
-	writeLine(&builder, "message", msg.Message)
+	f.writeLine(&builder, "source dir", msg.SourceDir)
+	f.writeLine(&builder, "target dir", msg.TargetDir)
+	f.writeLine(&builder, "duration", fmt.Sprintf("%s", msg.Duration))
+	f.writeLine(&builder, "task id", fmt.Sprintf("%d", msg.TaskID))
+	f.writeLine(&builder, "client id", msg.ClientID)
+	f.writeLine(&builder, "split pattern", msg.SplitPattern)
+	f.writeLine(&builder, "split files", fmt.Sprintf("%d", msg.SplitFiles))
+	f.writeLine(&builder, "log file", msg.LogFile)
+	f.writeLine(&builder, "message", msg.Message)
 
+	builder.WriteString(separator + "\n")
+
+	return builder.String()
+}
+
+func (f *Formatter) FormatTotalResults(total, success, failed int, key string) string {
+	var builder strings.Builder
+
+	titleLine := fmt.Sprintf("迁移结果汇总")
+	builder.WriteString(titleLine + "\n")
+
+	separator := strings.Repeat(f.SeparatorChar, f.SeparatorLen)
+	builder.WriteString(separator + "\n")
+
+	f.writeLine(&builder, "total", fmt.Sprintf("%d", total))
+	f.writeLine(&builder, "success", fmt.Sprintf("%d", success))
+	f.writeLine(&builder, "failed", fmt.Sprintf("%d", failed))
+	f.writeLine(&builder, "report", key)
 	builder.WriteString(separator + "\n")
 
 	return builder.String()
