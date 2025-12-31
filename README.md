@@ -79,8 +79,8 @@ global_config:
   max_files_per_output: 500000
   concurrency: 3
   rclone_flags:
-    checkers: 128
-    transfers: 128
+    checkers: 64
+    transfers: 64
     log_level: INFO
     local_no_set_modtime: true
     size_only: true
