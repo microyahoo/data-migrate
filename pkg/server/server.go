@@ -407,6 +407,9 @@ func (s *Server) handleResults() {
 			atomic.AddUint64(&s.completedCounter, 1)
 		}
 
+		if result.LogFile != "" {
+			result.LogFile = filepath.Join(s.config.ReportConfig.S3Config.Endpoint, s.config.ReportConfig.Bucket, result.LogFile)
+		}
 		s.writeResultToCSV(result)
 		s.results = append(s.results, result)
 

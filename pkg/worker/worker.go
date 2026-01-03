@@ -182,13 +182,13 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	if len(logFiles) > 0 {
 		logFile = logFiles[0] // simplify it
 	}
+	result.LogFile = logFile
 	result.SplitPattern = splitPattern
 	result.SplitFiles = splitFiles
 	if err != nil {
 		result.Success = false
 		result.Message = err.Error()
 	} else {
-		result.LogFile = logFile
 		result.Success = true
 		result.Message = message
 	}
