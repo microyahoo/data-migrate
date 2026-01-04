@@ -16,7 +16,9 @@ global_config:
   source_fs_types:
     - xfs
     - gpfs
-  target_fs_type: xfs
+  target_fs_types:
+    - xfs
+    - gpfs
   tasks_file: deploy/data_sources.test.txt
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/

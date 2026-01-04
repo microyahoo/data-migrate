@@ -71,7 +71,9 @@ global_config:
   source_fs_types:
     - yrfs_ec
     - gpfs
-  target_fs_type: yrfs_ec
+  target_fs_types:
+    - yrfs_ec
+    - gpfs
   tasks_file: deploy/data_sources.txt
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/

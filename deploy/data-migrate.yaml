@@ -167,7 +167,9 @@ data:
       source_fs_types:
         - yrfs
         - gpfs
-      target_fs_type: yrfs_ec
+      target_fs_types:
+        - yrfs
+        - gpfs
       tasks_file: deploy/data_sources.txt
       # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
       rclone_flags:

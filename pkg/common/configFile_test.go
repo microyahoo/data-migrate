@@ -49,7 +49,9 @@ global_config:
   source_fs_types:
     - yrfs
     - gpfs
-  target_fs_type: yrfs_ec
+  target_fs_types:
+    - yrfs_ec
+    - gpfs
   tasks_file: deploy/data_sources.txt
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
   file_list_dir_fs_type: yrfs_ec
@@ -81,7 +83,7 @@ global_config:
 				ServerSideListing: true,
 				FeishuURL:         "feishu",
 				SourceFsTypes:     []string{"yrfs", "gpfs"},
-				TargetFsType:      "yrfs_ec",
+				TargetFsTypes:     []string{"yrfs_ec", "gpfs"},
 				TasksFile:         "deploy/data_sources.txt",
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
 				FileListDirFsType: "yrfs_ec",
@@ -143,7 +145,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   "server_side_listing": true,
   "feishu_url": "feishu",
   "source_fs_types": ["yrfs", "gpfs"],
-  "target_fs_type": "yrfs_ec",
+  "target_fs_types": ["yrfs_ec", "gpfs"],
   "tasks_file": "deploy/data_sources.txt",
   "file_list_dir": "/mnt/yrfs/public-data/user/zhengliang/",
   "file_list_dir_fs_type": "yrfs_ec",
@@ -175,7 +177,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				ServerSideListing: true,
 				FeishuURL:         "feishu",
 				SourceFsTypes:     []string{"yrfs", "gpfs"},
-				TargetFsType:      "yrfs_ec",
+				TargetFsTypes:     []string{"yrfs_ec", "gpfs"},
 				TasksFile:         "deploy/data_sources.txt",
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
 				FileListDirFsType: "yrfs_ec",
