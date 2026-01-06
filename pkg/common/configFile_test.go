@@ -35,12 +35,12 @@ func (s *configFileTestSuite) Test_loadConfigFromYAMLFile() {
 		{"empty file", args{[]byte{}}, &MigrationConf{}},
 		{"fs configs", args{[]byte(`report_config:
   format: csv # csv, md or html
-  bucket: test
   s3_config:
     access_key: secretKey
     secret_key: secretSecret
     region: us-east-1
     endpoint: http://10.9.8.72:80
+    bucket: test
     skipSSLverify: true
 global_config:
   ultra_large_scale: true # indicate ultra-large-scale task
@@ -69,9 +69,9 @@ global_config:
 `)}, &MigrationConf{
 			ReportConfig: &ReportConfiguration{
 				Format: "csv",
-				Bucket: "test",
 				S3Config: &S3Configuration{
 					Endpoint:      "http://10.9.8.72:80",
+					Bucket:        "test",
 					AccessKey:     "secretKey",
 					SecretKey:     "secretSecret",
 					Region:        "us-east-1",
@@ -131,12 +131,12 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 		{"fs configs", args{[]byte(`{
 "report_config": {
   "format": "csv",
-  "bucket": "test",
   "s3_config": {
     "access_key": "secretKey",
     "secret_key": "secretSecret",
     "region": "us-east-1",
     "endpoint": "http://10.9.8.72:80",
+    "bucket": "test",
     "skipSSLverify": true
   }
 },
@@ -163,9 +163,9 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 }`)}, &MigrationConf{
 			ReportConfig: &ReportConfiguration{
 				Format: "csv",
-				Bucket: "test",
 				S3Config: &S3Configuration{
 					Endpoint:      "http://10.9.8.72:80",
+					Bucket:        "test",
 					AccessKey:     "secretKey",
 					SecretKey:     "secretSecret",
 					Region:        "us-east-1",

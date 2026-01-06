@@ -48,12 +48,12 @@ type S3Configuration struct {
 	SecretKey     string `yaml:"secret_key" json:"secret_key"`
 	Region        string `yaml:"region" json:"region"`
 	Endpoint      string `yaml:"endpoint" json:"endpoint"`
+	Bucket        string `yaml:"bucket" json:"bucket"` // report will upload to s3 bucket to persist
 	SkipSSLVerify bool   `yaml:"skipSSLverify" json:"skipSSLverify"`
 }
 
 type ReportConfiguration struct {
 	Format   string           `yaml:"format" json:"format"` // md, csv or html
-	Bucket   string           `yaml:"bucket" json:"bucket"` // report will upload to s3 bucket to persist
 	S3Config *S3Configuration `yaml:"s3_config" json:"s3_config"`
 }
 
@@ -117,8 +117,7 @@ type MigrationTask struct {
 	MaxFilesPerOutput int    `json:"max_files_per_output"`
 	Concurrency       int    `json:"concurrency"`
 
-	Bucket   string           `json:"bucket"` // logs will upload to s3 bucket to persist
-	S3Config *S3Configuration `json:"s3_config"`
+	S3Config *S3Configuration `json:"s3_config"` // logs will upload to s3 bucket to persist
 
 	RcloneFlags *RcloneFlags `json:"rclone_flags"`
 
@@ -284,7 +283,6 @@ func ParseTaskFile(conf *MigrationConf) ([]*MigrationTask, error) {
 			ID:            lineNum,
 			SourceFsTypes: globalConfig.SourceFsTypes,
 			TargetFsTypes: globalConfig.TargetFsTypes,
-			Bucket:        reportConfig.Bucket,
 			RcloneFlags:   globalConfig.RcloneFlags,
 			S3Config:      reportConfig.S3Config,
 			Timestamp:     timestamp,

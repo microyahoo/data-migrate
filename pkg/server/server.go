@@ -407,8 +407,9 @@ func (s *Server) handleResults() {
 			atomic.AddUint64(&s.completedCounter, 1)
 		}
 
-		if result.LogFile != "" {
-			result.LogFile = filepath.Join(s.config.ReportConfig.S3Config.Endpoint, s.config.ReportConfig.Bucket, result.LogFile)
+		if result.LogFile != "" && s.config.ReportConfig != nil && s.config.ReportConfig.S3Config != nil {
+			s3Config := s.config.ReportConfig.S3Config
+			result.LogFile = filepath.Join(s3Config.Endpoint, s3Config.Bucket, result.LogFile)
 		}
 		s.writeResultToCSV(result)
 		s.results = append(s.results, result)
@@ -634,7 +635,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 		}
 	}
 
-	if s.config.ReportConfig == nil || s.config.ReportConfig.Bucket == "" || s.config.ReportConfig.S3Config == nil {
+	if s.config.ReportConfig == nil || s.config.ReportConfig.S3Config == nil || s.config.ReportConfig.S3Config.Bucket == "" {
 		return
 	}
 
@@ -655,15 +656,15 @@ func (s *Server) generateResults(results []common.TaskResult) {
 	key := fmt.Sprintf("rclone/reports/data_migrate_results_%d.%s", timestamp, format)
 	defer f.Close()
 	_, e = client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: &s.config.ReportConfig.Bucket,
+		Bucket: &s3Config.Bucket,
 		ACL:    types.ObjectCannedACLPublicRead,
 		Key:    aws.String(key),
 		Body:   f,
 	})
 	if e != nil {
-		log.WithError(e).Warningf("Failed to upload report file to s3 bucket %s", s.config.ReportConfig.Bucket)
+		log.WithError(e).Warningf("Failed to upload report file to s3 bucket %s", s3Config.Bucket)
 	}
-	s.sendSummary(filepath.Join(s.config.ReportConfig.S3Config.Endpoint, s.config.ReportConfig.Bucket, key))
+	s.sendSummary(filepath.Join(s3Config.Endpoint, s3Config.Bucket, key))
 }
 
 // Formatter
