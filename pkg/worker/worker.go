@@ -494,7 +494,7 @@ func (w *Worker) processFile(workerID int, task *common.MigrationTask, baseArgs 
 	// Prepare arguments
 	args := make([]string, len(baseArgs))
 	copy(args, baseArgs)
-	args = append(args, "--log-file", logFile, "--no-traverse", "--files-from", file)
+	args = append(args, "--log-file", logFile, "--no-traverse", "--files-from-raw", file)
 
 	log.Infof("Worker %d: Executing rclone for file %s with rclone args: %v", workerID, file, args)
 
