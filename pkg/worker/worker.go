@@ -100,7 +100,11 @@ func (w *Worker) Start() error {
 	}
 }
 
-func (w *Worker) uploadFile(f *os.File, bucket string, s3Config *common.S3Configuration, key string) error {
+func (w *Worker) uploadFile(f *os.File, s3Config *common.S3Configuration, key string) error {
+	if s3Config == nil {
+		return nil
+	}
+	bucket := s3Config.Bucket
 	log.Infof("Start to upload results %s to s3 endpoint %s:%s", key, s3Config.Endpoint, bucket)
 	ctx := context.Background()
 	client, err := common.NewS3Client(ctx, s3Config.Endpoint, s3Config.AccessKey, s3Config.SecretKey,
@@ -204,7 +208,7 @@ func (w *Worker) uploadLogFile(logFile string, task *common.MigrationTask, s3Key
 	}
 	defer f.Close()
 
-	if err := w.uploadFile(f, task.Bucket, task.S3Config, s3Key); err != nil {
+	if err := w.uploadFile(f, task.S3Config, s3Key); err != nil {
 		return fmt.Errorf("failed to upload log file %s to s3: %v", logFile, err)
 	}
 

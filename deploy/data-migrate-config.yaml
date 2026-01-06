@@ -1,11 +1,11 @@
 report_config:
   format: csv # csv, md or html
-  bucket: test
   s3_config:
     access_key: testy
     secret_key: testy
     region: us-east-1
     endpoint: http://10.3.8.31:80
+    bucket: test
     skipSSLverify: true
 
 global_config:
@@ -16,7 +16,10 @@ global_config:
   source_fs_types:
     - yrfs_ec
     - gpfs
-  target_fs_type: yrfs_ec
+  target_fs_types:
+    - yrfs_ec
+    - gpfs
+    - s3
   tasks_file: deploy/data_sources.txt
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/

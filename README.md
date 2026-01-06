@@ -55,12 +55,12 @@ make build
 ```yaml
 report_config:
   format: csv # csv, md or html
-  bucket: test
   s3_config:
     access_key: <access key>
     secret_key: <secret key>
     region: us-east-1
     endpoint: <s3 endpoint>
+    bucket: test
     skipSSLverify: true
 
 global_config:
@@ -71,7 +71,9 @@ global_config:
   source_fs_types:
     - yrfs_ec
     - gpfs
-  target_fs_type: yrfs_ec
+  target_fs_types:
+    - yrfs_ec
+    - gpfs
   tasks_file: deploy/data_sources.txt
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
