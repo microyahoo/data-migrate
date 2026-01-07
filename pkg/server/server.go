@@ -43,6 +43,8 @@ type Server struct {
 	serverSideListing bool
 	pendingSubTasks   *sync.Map // task id -> subtask chan
 	subTaskCounterMap *sync.Map // task id -> counter
+
+	startTime time.Time
 }
 
 func NewServer(cfgFile string) (*Server, error) {
@@ -53,9 +55,10 @@ func NewServer(cfgFile string) (*Server, error) {
 		return nil, err
 	}
 	server := &Server{
-		config:  config,
-		clients: make(map[string]net.Conn),
-		done:    make(chan struct{}),
+		config:    config,
+		clients:   make(map[string]net.Conn),
+		done:      make(chan struct{}),
+		startTime: time.Now(),
 	}
 	if config.GlobalConfig.UltraLargeScale && config.GlobalConfig.ServerSideListing {
 		var validTasks []*common.MigrationTask
@@ -128,7 +131,7 @@ func (s *Server) handleServerListing() error {
 	serverID := fmt.Sprintf("%s-%d", hostname, os.Getpid())
 
 	for i, task := range s.tasks {
-		filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), serverID)
+		filesDir := filepath.Join(task.FileListDir, fmt.Sprintf("%d", task.Timestamp), serverID, fmt.Sprintf("%d", task.ID))
 		if err := os.MkdirAll(filesDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output directory: %v", err)
 		}
@@ -440,20 +443,20 @@ func (s *Server) handleResults() {
 		}
 		completed := atomic.LoadUint64(&s.completedCounter)
 		if int(completed) == len(s.tasks) {
-			s.generateResults(s.results)
+			s.generateResults(s.results, time.Since(s.startTime))
 			close(s.done)
 		}
 	}
 }
 
-func (s *Server) sendSummary(key string) {
+func (s *Server) sendSummary(key string, duration time.Duration) {
 	if s.config.GlobalConfig.FeishuURL == "" {
 		return
 	}
 	total := len(s.tasks)
 	success := atomic.LoadUint64(&s.successCounter)
 	failed := atomic.LoadUint64(&s.failedCounter)
-	content := NewFormatter().FormatTotalResults(total, int(success), int(failed), key)
+	content := NewFormatter().FormatTotalResults(total, int(success), int(failed), key, duration)
 	err := common.SendFeishuCard(
 		s.config.GlobalConfig.FeishuURL,
 		content,
@@ -558,7 +561,7 @@ func (s *Server) getCSVFileHandle() (*os.File, bool, error) {
 
 }
 
-func (s *Server) generateResults(results []common.TaskResult) {
+func (s *Server) generateResults(results []common.TaskResult, duration time.Duration) {
 	t := table.NewWriter()
 	var format = "csv"
 	if s.config.ReportConfig != nil {
@@ -664,7 +667,7 @@ func (s *Server) generateResults(results []common.TaskResult) {
 	if e != nil {
 		log.WithError(e).Warningf("Failed to upload report file to s3 bucket %s", s3Config.Bucket)
 	}
-	s.sendSummary(filepath.Join(s3Config.Endpoint, s3Config.Bucket, key))
+	s.sendSummary(filepath.Join(s3Config.Endpoint, s3Config.Bucket, key), duration)
 }
 
 // Formatter
@@ -712,7 +715,7 @@ func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
 	return builder.String()
 }
 
-func (f *Formatter) FormatTotalResults(total, success, failed int, key string) string {
+func (f *Formatter) FormatTotalResults(total, success, failed int, key string, duration time.Duration) string {
 	var builder strings.Builder
 
 	titleLine := fmt.Sprintf("迁移结果汇总")
@@ -724,6 +727,7 @@ func (f *Formatter) FormatTotalResults(total, success, failed int, key string) s
 	f.writeLine(&builder, "total", fmt.Sprintf("%d", total))
 	f.writeLine(&builder, "success", fmt.Sprintf("%d", success))
 	f.writeLine(&builder, "failed", fmt.Sprintf("%d", failed))
+	f.writeLine(&builder, "duration", fmt.Sprintf("%s", duration))
 	f.writeLine(&builder, "report", key)
 	builder.WriteString(separator + "\n")
 
