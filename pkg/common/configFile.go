@@ -39,6 +39,7 @@ type RcloneFlags struct {
 	LogLevel          string `yaml:"log_level" json:"log_level"`
 	LocalNoSetModtime bool   `yaml:"local_no_set_modtime" json:"local_no_set_modtime"`
 	SizeOnly          bool   `yaml:"size_only" json:"size_only"`
+	Update            bool   `yaml:"update" json:"update"`
 	Dryrun            bool   `yaml:"dryrun" json:"dryrun"`
 }
 

@@ -65,6 +65,7 @@ global_config:
     log_level: INFO
     local_no_set_modtime: true
     size_only: true
+    update: true
     dryrun: true
 `)}, &MigrationConf{
 			ReportConfig: &ReportConfiguration{
@@ -95,6 +96,7 @@ global_config:
 					LogLevel:          "INFO",
 					LocalNoSetModtime: true,
 					SizeOnly:          true,
+					Update:            true,
 					Dryrun:            true,
 				},
 			},
@@ -157,6 +159,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 	"log_level": "INFO",
 	"local_no_set_modtime": true,
     "size_only": true,
+    "update": true,
 	"dryrun": true
   }
 }
@@ -189,6 +192,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 					LogLevel:          "INFO",
 					LocalNoSetModtime: true,
 					SizeOnly:          true,
+					Update:            true,
 					Dryrun:            true,
 				},
 			},

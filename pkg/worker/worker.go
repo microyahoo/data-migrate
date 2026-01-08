@@ -158,6 +158,9 @@ func (w *Worker) executeTask(task *common.MigrationTask) *common.TaskResult {
 	if rcloneFlags.SizeOnly {
 		args = append(args, "--size-only")
 	}
+	if rcloneFlags.Update {
+		args = append(args, "--update")
+	}
 	if rcloneFlags.Dryrun {
 		args = append(args, "--dry-run")
 	}
