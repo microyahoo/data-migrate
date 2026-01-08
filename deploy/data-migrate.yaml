@@ -178,4 +178,5 @@ data:
         log_level: INFO
         local_no_set_modtime: true
         size_only: true
+        update: false
         dryrun: true
