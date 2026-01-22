@@ -46,11 +46,8 @@ global_config:
   ultra_large_scale: true # indicate ultra-large-scale task
   server_side_listing: true # Whether to list files on server side
   feishu_url: "feishu"
-  source_fs_types:
+  fs_types:
     - yrfs
-    - gpfs
-  target_fs_types:
-    - yrfs_ec
     - gpfs
   tasks_file: deploy/data_sources.txt
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
@@ -61,12 +58,7 @@ global_config:
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
   rclone_flags:
     checkers: 128
-    transfers: 64
     log_level: INFO
-    local_no_set_modtime: true
-    size_only: true
-    update: true
-    dryrun: true
 `)}, &MigrationConf{
 			ReportConfig: &ReportConfiguration{
 				Format: "csv",
@@ -83,21 +75,15 @@ global_config:
 				UltraLargeScale:   true,
 				ServerSideListing: true,
 				FeishuURL:         "feishu",
-				SourceFsTypes:     []string{"yrfs", "gpfs"},
-				TargetFsTypes:     []string{"yrfs_ec", "gpfs"},
+				FsTypes:           []string{"yrfs", "gpfs"},
 				TasksFile:         "deploy/data_sources.txt",
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
 				FileListDirFsType: "yrfs_ec",
 				MaxFilesPerOutput: 500000,
 				Concurrency:       3,
 				RcloneFlags: &RcloneFlags{
-					Checkers:          128,
-					Transfers:         64,
-					LogLevel:          "INFO",
-					LocalNoSetModtime: true,
-					SizeOnly:          true,
-					Update:            true,
-					Dryrun:            true,
+					Checkers: 128,
+					LogLevel: "INFO",
 				},
 			},
 		}},
@@ -146,8 +132,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   "ultra_large_scale": true,
   "server_side_listing": true,
   "feishu_url": "feishu",
-  "source_fs_types": ["yrfs", "gpfs"],
-  "target_fs_types": ["yrfs_ec", "gpfs"],
+  "fs_types": ["yrfs", "gpfs"],
   "tasks_file": "deploy/data_sources.txt",
   "file_list_dir": "/mnt/yrfs/public-data/user/zhengliang/",
   "file_list_dir_fs_type": "yrfs_ec",
@@ -155,12 +140,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   "concurrency": 3,
   "rclone_flags":  {
     "checkers": 128,
-	"transfers": 64,
-	"log_level": "INFO",
-	"local_no_set_modtime": true,
-    "size_only": true,
-    "update": true,
-	"dryrun": true
+	"log_level": "INFO"
   }
 }
 }`)}, &MigrationConf{
@@ -179,21 +159,15 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				UltraLargeScale:   true,
 				ServerSideListing: true,
 				FeishuURL:         "feishu",
-				SourceFsTypes:     []string{"yrfs", "gpfs"},
-				TargetFsTypes:     []string{"yrfs_ec", "gpfs"},
+				FsTypes:           []string{"yrfs", "gpfs"},
 				TasksFile:         "deploy/data_sources.txt",
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
 				FileListDirFsType: "yrfs_ec",
 				MaxFilesPerOutput: 500000,
 				Concurrency:       3,
 				RcloneFlags: &RcloneFlags{
-					Checkers:          128,
-					Transfers:         64,
-					LogLevel:          "INFO",
-					LocalNoSetModtime: true,
-					SizeOnly:          true,
-					Update:            true,
-					Dryrun:            true,
+					Checkers: 128,
+					LogLevel: "INFO",
 				},
 			},
 		}},
@@ -203,6 +177,43 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 			ReadFile = read(tt.args.configFileContent)
 			if got := LoadConfigFromFile("configFile.json"); !s.EqualValues(tt.want, got) {
 				t.Errorf("loadConfigFromFile() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func (s *configFileTestSuite) TestParseRcloneSize() {
+	tests := []struct {
+		name  string
+		input string
+		want  *RcloneSize
+	}{
+		{"empty dir", `Total objects: 0
+Total size: 0 B (0 Byte)`,
+			&RcloneSize{
+				Objects: 0,
+				Size:    "0 B",
+				Bytes:   0,
+			}},
+		{"normal dir", `Total objects: 231
+Total size: 696.459 MiB (730290222 Byte)`,
+			&RcloneSize{
+				Objects: 231,
+				Size:    "696.459 MiB",
+				Bytes:   730290222,
+			}},
+		{"large dir", `Total objects: 1k (1000)
+Total size: 20.381 MiB (21370754 Byte)`,
+			&RcloneSize{
+				Objects: 1000,
+				Size:    "20.381 MiB",
+				Bytes:   21370754,
+			}},
+	}
+	for _, tt := range tests {
+		s.T().Run(tt.name, func(t *testing.T) {
+			if got, _ := ParseRcloneSize(tt.input); !s.EqualValues(tt.want, got) {
+				t.Errorf("ParseRcloneSize() = %v, want %v", got, tt.want)
 			}
 		})
 	}

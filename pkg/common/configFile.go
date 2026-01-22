@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -20,9 +21,8 @@ type MigrationConf struct {
 
 type GlobalConfiguration struct {
 	FeishuURL         string       `yaml:"feishu_url" json:"feishu_url"`
-	SourceFsTypes     []string     `yaml:"source_fs_types" json:"source_fs_types"` // cpfs, yrfs
-	TargetFsTypes     []string     `yaml:"target_fs_types" json:"target_fs_types"` // yrfs_ec, gpfs
-	TasksFile         string       `yaml:"tasks_file" json:"tasks_file"`           // eg: deploy/data_sources.txt
+	FsTypes           []string     `yaml:"fs_types" json:"fs_types"`     // cpfs, yrfs
+	TasksFile         string       `yaml:"tasks_file" json:"tasks_file"` // eg: deploy/data_sources.txt
 	RcloneFlags       *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
 	FileListDir       string       `yaml:"file_list_dir" json:"file_list_dir"`
 	FileListDirFsType string       `yaml:"file_list_dir_fs_type" json:"file_list_dir_fs_type"`
@@ -34,13 +34,8 @@ type GlobalConfiguration struct {
 }
 
 type RcloneFlags struct {
-	Checkers          int    `yaml:"checkers" json:"checkers"`
-	Transfers         int    `yaml:"transfers" json:"transfers"`
-	LogLevel          string `yaml:"log_level" json:"log_level"`
-	LocalNoSetModtime bool   `yaml:"local_no_set_modtime" json:"local_no_set_modtime"`
-	SizeOnly          bool   `yaml:"size_only" json:"size_only"`
-	Update            bool   `yaml:"update" json:"update"`
-	Dryrun            bool   `yaml:"dryrun" json:"dryrun"`
+	Checkers int    `yaml:"checkers" json:"checkers"`
+	LogLevel string `yaml:"log_level" json:"log_level"`
 }
 
 // S3Configuration contains all information to connect to a certain S3 endpoint
@@ -69,8 +64,8 @@ func CheckSetConfig(config *MigrationConf) {
 }
 
 func checkMigrationConfig(config *MigrationConf) error {
-	if len(config.GlobalConfig.SourceFsTypes) == 0 || len(config.GlobalConfig.TargetFsTypes) == 0 {
-		return fmt.Errorf("source and dest fs type need to be set")
+	if len(config.GlobalConfig.FsTypes) == 0 {
+		return fmt.Errorf("fs type need to be set")
 	}
 	if config.GlobalConfig.TasksFile == "" {
 		return fmt.Errorf("data-migrate tasks file need to be set")
@@ -106,12 +101,10 @@ func LoadConfigFromFile(configFile string) *MigrationConf {
 
 // MigrationTask struct
 type MigrationTask struct {
-	ID            int      `json:"id"`              // task id
-	SourceDir     string   `json:"source_dir"`      // Source directory
-	TargetDir     string   `json:"target_dir"`      // Target directory
-	FileListPath  string   `json:"file_list_path"`  // File list path
-	SourceFsTypes []string `json:"source_fs_types"` // gpfs, yrfs
-	TargetFsTypes []string `json:"target_fs_types"` // yrfs_ec
+	ID           int      `json:"id"`             // task id
+	SourceDir    string   `json:"source_dir"`     // Source directory
+	FileListPath string   `json:"file_list_path"` // File list path
+	FsTypes      []string `json:"fs_types"`       // gpfs, yrfs
 
 	FileListDir       string `json:"file_list_dir"`
 	FileListDirFsType string `json:"file_list_dir_fs_type"`
@@ -130,31 +123,16 @@ type MigrationTask struct {
 }
 
 func (t *MigrationTask) Check() error {
-	if t.SourceDir == "" || t.TargetDir == "" {
-		return fmt.Errorf("Source or destination is empty")
+	if t.SourceDir == "" {
+		return fmt.Errorf("Source is empty")
 	}
 	st, err := GetFilesystemType(t.SourceDir)
 	if err != nil {
 		return err
 	}
-	_, err = os.Stat(t.TargetDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if err = os.MkdirAll(t.TargetDir, 0755); err != nil {
-				return err
-			}
-		} else {
-			return fmt.Errorf("failed to stat target dir %s: %s", t.TargetDir, err)
-		}
-	}
-	tt, err := GetFilesystemType(t.TargetDir)
-	if err != nil {
-		return err
-	}
-	stypeSet := sets.NewString(t.SourceFsTypes...)
-	dtypeSet := sets.NewString(t.TargetFsTypes...)
-	if !stypeSet.Has(st) || !dtypeSet.Has(tt) {
-		return fmt.Errorf("actual source or target filesystem type not match(%s, %s)", st, tt)
+	stypeSet := sets.NewString(t.FsTypes...)
+	if !stypeSet.Has(st) {
+		return fmt.Errorf("filesystem type not match(%s, %s)", st, t.FsTypes)
 	}
 	if t.FileListPath != "" {
 		ft, err := GetFilesystemType(t.FileListDir)
@@ -162,7 +140,7 @@ func (t *MigrationTask) Check() error {
 			return err
 		}
 		if ft != t.FileListDirFsType {
-			return fmt.Errorf("actual source, target or file list directory filesystem type not match(%s, %s, %s)", st, tt, ft)
+			return fmt.Errorf("actual file list directory filesystem type not match(%s, %s)", ft, t.FileListDirFsType)
 		}
 	}
 	si, err := os.Stat(t.SourceDir)
@@ -272,29 +250,27 @@ func ParseTaskFile(conf *MigrationConf) ([]*MigrationTask, error) {
 
 		// Split into three columns
 		parts := strings.Fields(line)
-		if len(parts) > 3 || len(parts) < 2 {
-			return nil, fmt.Errorf("line %d: incorrect format, expected 2 or 3 columns, got %d: %s",
+		if len(parts) > 2 {
+			return nil, fmt.Errorf("line %d: incorrect format, expected 1 column, got %d: %s",
 				lineNum, len(parts), line)
 		}
 
 		// Create migration task
 		task := &MigrationTask{
-			SourceDir:     strings.TrimSpace(parts[0]),
-			TargetDir:     strings.TrimSpace(parts[1]),
-			ID:            lineNum,
-			SourceFsTypes: globalConfig.SourceFsTypes,
-			TargetFsTypes: globalConfig.TargetFsTypes,
-			RcloneFlags:   globalConfig.RcloneFlags,
-			S3Config:      reportConfig.S3Config,
-			Timestamp:     timestamp,
+			SourceDir:   strings.TrimSpace(parts[0]),
+			ID:          lineNum,
+			FsTypes:     globalConfig.FsTypes,
+			RcloneFlags: globalConfig.RcloneFlags,
+			S3Config:    reportConfig.S3Config,
+			Timestamp:   timestamp,
 
 			FileListDir:       globalConfig.FileListDir,
 			FileListDirFsType: globalConfig.FileListDirFsType,
 			MaxFilesPerOutput: globalConfig.MaxFilesPerOutput,
 			Concurrency:       globalConfig.Concurrency,
 		}
-		if len(parts) == 3 { // if column 3 not exists, all the source dirs will be copy.
-			task.FileListPath = strings.TrimSpace(parts[2])
+		if len(parts) == 2 {
+			task.FileListPath = strings.TrimSpace(parts[1])
 		}
 
 		tasks = append(tasks, task)
@@ -305,4 +281,44 @@ func ParseTaskFile(conf *MigrationConf) ([]*MigrationTask, error) {
 	}
 
 	return tasks, nil
+}
+
+// RcloneSize parse the result of 'rclone size'
+type RcloneSize struct {
+	Objects int64  // objects
+	Size    string // size, eg. 10 GB
+	Bytes   int64  // bytes
+}
+
+func ParseRcloneSize(output string) (*RcloneSize, error) {
+	// Total objects: 231
+	// Total size: 695.903 MiB (729707029 Byte)
+	var (
+		objects int64
+		size    string
+		bytes   int64
+	)
+	// - Total objects: 348
+	// - Total objects: 1k (1000)
+	// - Total objects: 2.5M (2500000)
+	// objRegex := regexp.MustCompile(`Total objects:\s*(\d+)`)
+	objRegex := regexp.MustCompile(`Total objects:\s*(?:[\d\.]+[kMGTPE]?\s*\()?(\d+)\)?`)
+	objMatch := objRegex.FindStringSubmatch(output)
+	if len(objMatch) >= 2 {
+		fmt.Sscanf(objMatch[1], "%d", &objects)
+	}
+
+	// match size and bytes
+	sizeRegex := regexp.MustCompile(`Total size:\s*([\d\.]+\s+\w+)\s+\((\d+)\s+Bytes?\)`)
+	sizeMatch := sizeRegex.FindStringSubmatch(output)
+	if len(sizeMatch) > 2 {
+		size = sizeMatch[1]                    // 44.882 GiB
+		fmt.Sscanf(sizeMatch[2], "%d", &bytes) // 48191611197
+	}
+
+	if size == "" {
+		return nil, fmt.Errorf("failed to parse rclone size")
+	}
+
+	return &RcloneSize{Objects: objects, Size: size, Bytes: bytes}, nil
 }
