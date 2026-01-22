@@ -64,7 +64,7 @@ func NewServer(cfgFile string) (*Server, error) {
 		var validTasks []*common.MigrationTask
 		for _, task := range tasks {
 			if err := task.Check(); err != nil {
-				log.Warningf("task %d is invalid, source dir: %s, target dir: %s, error: %s", task.ID, task.SourceDir, task.TargetDir, err)
+				log.Warningf("task %d is invalid, source dir: %s, error: %s", task.ID, task.SourceDir, err)
 			} else {
 				task.ID = len(validTasks) + 1 // 0 means no more tasks
 				validTasks = append(validTasks, task)
@@ -105,7 +105,7 @@ func (s *Server) Start(serverPort int) error {
 	for {
 		select {
 		case <-s.done:
-			log.Infof("All data migration tasks done!")
+			log.Infof("All data capacity statistics tasks done!")
 			return nil
 		default:
 			conn, err := listener.Accept()
@@ -141,7 +141,7 @@ func (s *Server) handleServerListing() error {
 			outputPrefix = filepath.Base(task.SourceDir)
 		}
 		// Get file channel from FindFiles
-		fileChan, err := common.FindFiles(task.SourceDir, task.TargetDir, task.FileListPath,
+		fileChan, err := common.FindFiles(task.SourceDir, task.FileListPath,
 			0,            /* list concurrency (let FindFiles decide) */
 			filesDir,     /*output directory*/
 			outputPrefix, /*output prefix*/
@@ -320,17 +320,18 @@ func (s *Server) handleClient(conn net.Conn, clientID string) {
 		result.ClientID = clientID
 		if result.Success {
 			if s.serverSideListing {
-				log.Infof("task(%d/%d) with file from %s has been migrated from %s to %s successfully",
-					taskToSend.ID, taskToSend.SubTaskID, taskToSend.FileFrom, taskToSend.SourceDir, taskToSend.TargetDir)
+				log.Infof("The capacity statistics for %s of task(%d/%d) with file from %s has been completed successfully",
+					taskToSend.SourceDir, taskToSend.ID, taskToSend.SubTaskID, taskToSend.FileFrom)
 			} else {
-				log.Infof("task(%d) has been migrated from %s to %s successfully", taskToSend.ID, taskToSend.SourceDir, taskToSend.TargetDir)
+				log.Infof("The capacity statistics for %s of task(%d) has been completed successfully",
+					taskToSend.SourceDir, taskToSend.ID)
 			}
 		} else {
 			if s.serverSideListing {
-				log.Errorf("failed to migrate task(%d/%d) with file from %s from %s to %s", taskToSend.ID,
-					taskToSend.SubTaskID, taskToSend.FileFrom, taskToSend.SourceDir, taskToSend.TargetDir)
+				log.Errorf("failed to count capacity for %s of task(%d/%d) with file from %s", taskToSend.SourceDir,
+					taskToSend.ID, taskToSend.SubTaskID, taskToSend.FileFrom)
 			} else {
-				log.Errorf("failed to migrate task(%d) from %s to %s", taskToSend.ID, taskToSend.SourceDir, taskToSend.TargetDir)
+				log.Errorf("failed to count capacity for %s of task(%d)", taskToSend.SourceDir, taskToSend.ID)
 			}
 		}
 		s.completed <- result
@@ -342,8 +343,10 @@ func (s *Server) handleResults() {
 		taskStartTimeMap = make(map[int]time.Time)
 		taskEndTimeMap   = make(map[int]time.Time)
 		taskCounterMap   = make(map[int]int)
-		taskResultsMap   = make(map[int][]common.TaskResult)
 		failedTaskMap    = make(map[int][]string)
+		taskObjectsMap   = make(map[int]int64)
+		taskBytesMap     = make(map[int]int64)
+		taskSizeMap      = make(map[int]string)
 	)
 	for result := range s.completed {
 		var lastResult *common.TaskResult
@@ -358,6 +361,14 @@ func (s *Server) handleResults() {
 				taskEndTimeMap[result.TaskID] = result.EndTime
 			}
 		}
+		if _, ok := taskObjectsMap[result.TaskID]; !ok {
+			taskObjectsMap[result.TaskID] = result.Objects
+			taskBytesMap[result.TaskID] = result.Bytes
+			taskSizeMap[result.TaskID] = result.Size
+		} else {
+			taskObjectsMap[result.TaskID] += result.Objects
+			taskBytesMap[result.TaskID] += result.Bytes
+		}
 		if !result.Success {
 			atomic.AddUint64(&s.failedCounter, 1)
 			failedTaskMap[result.TaskID] = append(failedTaskMap[result.TaskID], result.Message)
@@ -365,7 +376,6 @@ func (s *Server) handleResults() {
 			atomic.AddUint64(&s.successCounter, 1)
 		}
 		taskCounterMap[result.TaskID] = taskCounterMap[result.TaskID] + 1
-		taskResultsMap[result.TaskID] = append(taskResultsMap[result.TaskID], result)
 		info := fmt.Sprintf("Task %d completed by client %s: success: %v, message: %s",
 			result.TaskID, result.ClientID, result.Success, result.Message)
 		if s.serverSideListing {
@@ -380,12 +390,14 @@ func (s *Server) handleResults() {
 				atomic.AddUint64(&s.completedCounter, 1)
 				lastResult = &common.TaskResult{
 					SourceDir: result.SourceDir,
-					TargetDir: result.TargetDir,
 					TaskID:    result.TaskID,
 					Success:   true,
 					StartTime: taskStartTimeMap[result.TaskID],
 					EndTime:   taskEndTimeMap[result.TaskID],
 					Duration:  taskEndTimeMap[result.TaskID].Sub(taskStartTimeMap[result.TaskID]),
+					Size:      common.ByteSize(uint64(taskBytesMap[result.TaskID])),
+					Objects:   taskObjectsMap[result.TaskID],
+					Bytes:     taskBytesMap[result.TaskID],
 				}
 				failedMessages := failedTaskMap[result.TaskID]
 				if len(failedMessages) > 0 {
@@ -499,10 +511,12 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 			"id",
 			"subtask id",
 			"source dir",
-			"target dir",
 			"client id",
 			"duration",
 			"success",
+			"objects",
+			"bytes",
+			"size",
 			"split pattern",
 			"split files",
 			"file from",
@@ -519,10 +533,12 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 		fmt.Sprintf("%d", result.TaskID),
 		fmt.Sprintf("%d", result.SubTaskID),
 		result.SourceDir,
-		result.TargetDir,
 		result.ClientID,
 		fmt.Sprintf("%s", result.Duration),
 		fmt.Sprintf("%t", result.Success),
+		fmt.Sprintf("%d", result.Objects),
+		fmt.Sprintf("%d", result.Bytes),
+		result.Size,
 		result.SplitPattern,
 		fmt.Sprintf("%d", result.SplitFiles),
 		result.FileFrom,
@@ -583,10 +599,12 @@ func (s *Server) generateResults(results []common.TaskResult, duration time.Dura
 			"id",
 			"subtask id",
 			"source dir",
-			"target dir",
 			"client id",
 			"duration",
 			"success",
+			"objects",
+			"bytes",
+			"size",
 			"split pattern",
 			"split files",
 			"file from",
@@ -598,10 +616,12 @@ func (s *Server) generateResults(results []common.TaskResult, duration time.Dura
 				fmt.Sprintf("%d", result.TaskID),
 				fmt.Sprintf("%d", result.SubTaskID),
 				result.SourceDir,
-				result.TargetDir,
 				result.ClientID,
 				fmt.Sprintf("%s", result.Duration),
 				fmt.Sprintf("%t", result.Success),
+				fmt.Sprintf("%d", result.Objects),
+				fmt.Sprintf("%d", result.Bytes),
+				result.Size,
 				result.SplitPattern,
 				fmt.Sprintf("%d", result.SplitFiles),
 				result.FileFrom,
@@ -687,28 +707,30 @@ func (f *Formatter) writeLine(builder *strings.Builder, label, value string) {
 	builder.WriteString(fmt.Sprintf("%s: %s", label, value) + "\n")
 }
 
-func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
+func (f *Formatter) FormatMigrationMessage(result common.TaskResult) string {
 	var builder strings.Builder
 
 	status := "成功"
-	if !msg.Success {
+	if !result.Success {
 		status = "失败"
 	}
-	titleLine := fmt.Sprintf("迁移任务状态: %s", status)
+	titleLine := fmt.Sprintf("容量统计任务状态: %s", status)
 	builder.WriteString(titleLine + "\n")
 
 	separator := strings.Repeat(f.SeparatorChar, f.SeparatorLen)
 	builder.WriteString(separator + "\n")
 
-	f.writeLine(&builder, "source dir", msg.SourceDir)
-	f.writeLine(&builder, "target dir", msg.TargetDir)
-	f.writeLine(&builder, "duration", fmt.Sprintf("%s", msg.Duration))
-	f.writeLine(&builder, "task id", fmt.Sprintf("%d", msg.TaskID))
-	f.writeLine(&builder, "client id", msg.ClientID)
-	f.writeLine(&builder, "split pattern", msg.SplitPattern)
-	f.writeLine(&builder, "split files", fmt.Sprintf("%d", msg.SplitFiles))
-	f.writeLine(&builder, "log file", msg.LogFile)
-	f.writeLine(&builder, "message", msg.Message)
+	f.writeLine(&builder, "source dir", result.SourceDir)
+	f.writeLine(&builder, "duration", fmt.Sprintf("%s", result.Duration))
+	f.writeLine(&builder, "objects", fmt.Sprintf("%d", result.Objects))
+	f.writeLine(&builder, "bytes", fmt.Sprintf("%d", result.Bytes))
+	f.writeLine(&builder, "size", result.Size)
+	f.writeLine(&builder, "task id", fmt.Sprintf("%d", result.TaskID))
+	f.writeLine(&builder, "client id", result.ClientID)
+	f.writeLine(&builder, "split pattern", result.SplitPattern)
+	f.writeLine(&builder, "split files", fmt.Sprintf("%d", result.SplitFiles))
+	f.writeLine(&builder, "log file", result.LogFile)
+	f.writeLine(&builder, "message", result.Message)
 
 	builder.WriteString(separator + "\n")
 
@@ -718,7 +740,7 @@ func (f *Formatter) FormatMigrationMessage(msg common.TaskResult) string {
 func (f *Formatter) FormatTotalResults(total, success, failed int, key string, duration time.Duration) string {
 	var builder strings.Builder
 
-	titleLine := fmt.Sprintf("迁移结果汇总")
+	titleLine := fmt.Sprintf("容量统计汇总")
 	builder.WriteString(titleLine + "\n")
 
 	separator := strings.Repeat(f.SeparatorChar, f.SeparatorLen)
