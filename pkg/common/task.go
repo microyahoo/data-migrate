@@ -11,7 +11,6 @@ type TaskRequest struct {
 
 type TaskResult struct {
 	SourceDir    string        `json:"source_dir"`
-	TargetDir    string        `json:"target_dir"`
 	TaskID       int           `json:"task_id"`
 	Success      bool          `json:"success"`
 	Message      string        `json:"message"`
@@ -25,4 +24,7 @@ type TaskResult struct {
 	FileFrom  string    `json:"file_from"`
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
+	Objects   int64     `json:"objects"`
+	Size      string    `json:"size"`
+	Bytes     int64     `json:"bytes"`
 }
