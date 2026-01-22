@@ -26,7 +26,7 @@ func main() {
 
 func newCommand() *cobra.Command {
 	cmds := &cobra.Command{
-		Use: "data-migrate-worker",
+		Use: "data-capacity-statistics-worker",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			_, err := exec.Command("rclone", "version").CombinedOutput()
 			if err != nil {
@@ -70,7 +70,7 @@ func run() {
 		log.SetLevel(log.InfoLevel)
 	}
 	log.Debugf("viper settings: %+v", viper.AllSettings())
-	log.Debugf("data-migrate worker serverAddress: %s", serverAddress)
+	log.Debugf("data-capacity-statistics worker serverAddress: %s", serverAddress)
 
 	// TODO: functional parameters
 	worker.NewWorker(serverAddress, concurrency).Start()
