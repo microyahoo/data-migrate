@@ -54,6 +54,7 @@ func getFilesystemTypeLinux(path string) (string, error) {
 		0x2fc12fc1: "zfs",
 		0x58465342: "xfs",
 		0x9fa1:     "sysfs",
+		0xc36400:   "ceph",
 		0xbd00bd0:  "unionfs",
 		0x31384:    "yrfs_ec", // YRFS_SUPER_MAGIC
 		0x47504653: "gpfs",    // GPFS_SUPER_MAGIC
