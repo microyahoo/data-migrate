@@ -6,8 +6,8 @@ clean:
 	rm -rf bin/*
 
 build-local:
-	@go build -o ./bin/data-migrate-server ./cmd/server
-	@go build -o ./bin/data-migrate-worker ./cmd/worker
+	@go build -o ./bin/data-migrate-no-rclone-server ./cmd/server
+	@go build -o ./bin/data-migrate-no-rclone-worker ./cmd/worker
 
 build:
 	docker pull reg.deeproute.ai/deeproute-public/go/golang:alpine
