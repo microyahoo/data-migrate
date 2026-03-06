@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -489,38 +488,77 @@ func (w *Worker) rcloneWorker(workerID int, task *common.MigrationTask, baseArgs
 // processFile processes a single file with rclone
 func (w *Worker) processFile(workerID int, task *common.MigrationTask, baseArgs []string,
 	file string) (string, error) {
-
-	// Create unique log file
-	logFile := fmt.Sprintf("/tmp/rclone_copy_%d_%d_worker%d_%s.log",
-		task.Timestamp, task.ID, workerID, sanitizeFileName(filepath.Base(file)))
-
-	// Prepare arguments
-	args := make([]string, len(baseArgs))
-	copy(args, baseArgs)
-	args = append(args, "--log-file", logFile, "--no-traverse", "--files-from-raw", file)
-
-	log.Infof("Worker %d: Executing rclone for file %s with rclone args: %v", workerID, file, args)
-
-	// Create and execute command
-	cmd := exec.Command("rclone", args...)
-	output, err := cmd.CombinedOutput()
-
+	var (
+		concurrency = task.RcloneFlags.Transfers
+		srcPath     = task.SourceDir
+		destPath    = task.TargetDir
+		compare     = "size" // size or md5
+	)
+	if concurrency <= 0 {
+		concurrency = 16
+	}
+	method, err := ParseCompareMethod(compare)
 	if err != nil {
-		// Return detailed error including command output
-		return "", fmt.Errorf("rclone command failed: %v, output: %s", err, string(output))
+		return "", err
 	}
 
-	log.Infof("Worker %d: Successfully processed file %s", workerID, file)
-
-	// Upload log file
-	s3LogFileKey := fmt.Sprintf("rclone/log-files/%d/%s", task.Timestamp, filepath.Base(logFile))
-	if uploadErr := w.uploadLogFile(logFile, task, s3LogFileKey); uploadErr != nil {
-		log.Warningf("Worker %d: Failed to upload log file %s: %v", workerID, logFile, uploadErr)
-		// Don't fail the entire operation if upload fails
-		// The file was still processed successfully
+	absSrc, err := filepath.Abs(srcPath)
+	if err != nil {
+		return "", err
+	}
+	absDst, err := filepath.Abs(destPath)
+	if err != nil {
+		return "", err
 	}
 
-	return s3LogFileKey, nil
+	cfg := MigrateConfig{
+		Concurrency:   concurrency,
+		CompareMethod: method,
+	}
+	migrator := NewMigrator(cfg)
+
+	taskCh := make(chan FileTask, cfg.Concurrency*2)
+
+	// Stream-read file list in a separate goroutine so memory usage
+	// stays bounded regardless of how many files are in the list.
+	go func() {
+		defer close(taskCh)
+		if err := streamTasks(absSrc, absDst, file, taskCh); err != nil {
+			log.Fatalf("read file list: %v", err)
+		}
+	}()
+
+	log.Infof("starting migration: concurrency=%d, compare=%s", cfg.Concurrency, method)
+
+	var stats MigrateStats
+	start := time.Now()
+
+	stopProgress := startProgressReporter(&stats, start, 30*time.Second)
+	migrator.Run(taskCh, &stats)
+	stopProgress()
+
+	elapsed := time.Since(start)
+
+	succeeded := stats.Succeeded.Load()
+	skippedSame := stats.SkippedSame.Load()
+	skippedNoSrc := stats.SkippedNoSrc.Load()
+	failed := stats.Failed.Load()
+	totalBytes := stats.Bytes.Load()
+	total := succeeded + skippedSame + skippedNoSrc + failed
+
+	log.Infof("migration completed in %s: total=%d succeeded=%d skipped_same=%d skipped_not_found=%d failed=%d",
+		elapsed.Round(time.Millisecond), total,
+		succeeded, skippedSame, skippedNoSrc, failed)
+	log.Infof("total migrated: %s, throughput: %s/s",
+		formatBytes(totalBytes), formatBytes(throughput(totalBytes, elapsed)))
+
+	if failed != 0 {
+		return "", fmt.Errorf("migration completed in %s for %s: total=%d succeeded=%d skipped_same=%d skipped_not_found=%d failed=%d",
+			elapsed.Round(time.Millisecond), file, total,
+			succeeded, skippedSame, skippedNoSrc, failed)
+	}
+
+	return "", nil
 }
 
 // sanitizeFileName removes invalid characters from file name
