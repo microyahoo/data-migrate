@@ -20,22 +20,15 @@ type MigrationConf struct {
 }
 
 type GlobalConfiguration struct {
-	FeishuURL         string       `yaml:"feishu_url" json:"feishu_url"`
-	FsTypes           []string     `yaml:"fs_types" json:"fs_types"`     // cpfs, yrfs
-	TasksFile         string       `yaml:"tasks_file" json:"tasks_file"` // eg: deploy/data_sources.txt
-	RcloneFlags       *RcloneFlags `yaml:"rclone_flags" json:"rclone_flags"`
-	FileListDir       string       `yaml:"file_list_dir" json:"file_list_dir"`
-	FileListDirFsType string       `yaml:"file_list_dir_fs_type" json:"file_list_dir_fs_type"`
-	MaxFilesPerOutput int          `yaml:"max_files_per_output" json:"max_files_per_output"`
-	Concurrency       int          `yaml:"concurrency" json:"concurrency"`
+	FeishuURL         string   `yaml:"feishu_url" json:"feishu_url"`
+	FsTypes           []string `yaml:"fs_types" json:"fs_types"`     // cpfs, yrfs
+	TasksFile         string   `yaml:"tasks_file" json:"tasks_file"` // eg: deploy/data_sources.txt
+	FileListDir       string   `yaml:"file_list_dir" json:"file_list_dir"`
+	FileListDirFsType string   `yaml:"file_list_dir_fs_type" json:"file_list_dir_fs_type"`
+	Concurrency       int      `yaml:"concurrency" json:"concurrency"`
 
 	UltraLargeScale   bool `yaml:"ultra_large_scale" json:"ultra_large_scale"`
 	ServerSideListing bool `yaml:"server_side_listing" json:"server_side_listing"`
-}
-
-type RcloneFlags struct {
-	Checkers int    `yaml:"checkers" json:"checkers"`
-	LogLevel string `yaml:"log_level" json:"log_level"`
 }
 
 // S3Configuration contains all information to connect to a certain S3 endpoint
@@ -108,12 +101,9 @@ type MigrationTask struct {
 
 	FileListDir       string `json:"file_list_dir"`
 	FileListDirFsType string `json:"file_list_dir_fs_type"`
-	MaxFilesPerOutput int    `json:"max_files_per_output"`
 	Concurrency       int    `json:"concurrency"`
 
 	S3Config *S3Configuration `json:"s3_config"` // logs will upload to s3 bucket to persist
-
-	RcloneFlags *RcloneFlags `json:"rclone_flags"`
 
 	Timestamp int64 `json:"timestamp"` // the timestamp of creating server
 
@@ -248,25 +238,23 @@ func ParseTaskFile(conf *MigrationConf) ([]*MigrationTask, error) {
 		}
 		lineNum++
 
-		// Split into three columns
+		// Split into no more than two columns
 		parts := strings.Fields(line)
 		if len(parts) > 2 {
-			return nil, fmt.Errorf("line %d: incorrect format, expected 1 column, got %d: %s",
+			return nil, fmt.Errorf("line %d: incorrect format, expected no more than 2 columns, got %d: %s",
 				lineNum, len(parts), line)
 		}
 
 		// Create migration task
 		task := &MigrationTask{
-			SourceDir:   strings.TrimSpace(parts[0]),
-			ID:          lineNum,
-			FsTypes:     globalConfig.FsTypes,
-			RcloneFlags: globalConfig.RcloneFlags,
-			S3Config:    reportConfig.S3Config,
-			Timestamp:   timestamp,
+			SourceDir: strings.TrimSpace(parts[0]),
+			ID:        lineNum,
+			FsTypes:   globalConfig.FsTypes,
+			S3Config:  reportConfig.S3Config,
+			Timestamp: timestamp,
 
 			FileListDir:       globalConfig.FileListDir,
 			FileListDirFsType: globalConfig.FileListDirFsType,
-			MaxFilesPerOutput: globalConfig.MaxFilesPerOutput,
 			Concurrency:       globalConfig.Concurrency,
 		}
 		if len(parts) == 2 {

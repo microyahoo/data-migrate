@@ -9,8 +9,8 @@ report_config:
     skipSSLverify: true
 
 global_config:
-  ultra_large_scale: true # indicate ultra-large-scale task
-  server_side_listing: true # Whether to list files on server side
+  ultra_large_scale: false
+  server_side_listing: false
 
   feishu_url: "feishu_url"
   fs_types:
@@ -20,10 +20,4 @@ global_config:
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
   file_list_dir_fs_type: xfs
-  max_files_per_output: 1000
   concurrency: 3
-
-  # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
-  rclone_flags:
-    checkers: 64
-    log_level: INFO

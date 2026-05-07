@@ -52,13 +52,7 @@ global_config:
   tasks_file: deploy/data_sources.txt
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
   file_list_dir_fs_type: yrfs_ec
-  max_files_per_output: 500000
   concurrency: 3
-  #
-  # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
-  rclone_flags:
-    checkers: 128
-    log_level: INFO
 `)}, &MigrationConf{
 			ReportConfig: &ReportConfiguration{
 				Format: "csv",
@@ -79,12 +73,7 @@ global_config:
 				TasksFile:         "deploy/data_sources.txt",
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
 				FileListDirFsType: "yrfs_ec",
-				MaxFilesPerOutput: 500000,
 				Concurrency:       3,
-				RcloneFlags: &RcloneFlags{
-					Checkers: 128,
-					LogLevel: "INFO",
-				},
 			},
 		}},
 	}
@@ -136,12 +125,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
   "tasks_file": "deploy/data_sources.txt",
   "file_list_dir": "/mnt/yrfs/public-data/user/zhengliang/",
   "file_list_dir_fs_type": "yrfs_ec",
-  "max_files_per_output": 500000,
-  "concurrency": 3,
-  "rclone_flags":  {
-    "checkers": 128,
-	"log_level": "INFO"
-  }
+  "concurrency": 3
 }
 }`)}, &MigrationConf{
 			ReportConfig: &ReportConfiguration{
@@ -163,12 +147,7 @@ func (s *configFileTestSuite) Test_loadConfigFromJSONFile() {
 				TasksFile:         "deploy/data_sources.txt",
 				FileListDir:       "/mnt/yrfs/public-data/user/zhengliang/",
 				FileListDirFsType: "yrfs_ec",
-				MaxFilesPerOutput: 500000,
 				Concurrency:       3,
-				RcloneFlags: &RcloneFlags{
-					Checkers: 128,
-					LogLevel: "INFO",
-				},
 			},
 		}},
 	}

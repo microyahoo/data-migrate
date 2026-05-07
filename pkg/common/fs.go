@@ -8,11 +8,102 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	log "github.com/sirupsen/logrus"
 	// "golang.org/x/sync/errgroup"
 )
+
+// DirStats holds the aggregated result of a directory walk.
+type DirStats struct {
+	Objects int64
+	Bytes   int64
+}
+
+// WalkDirAndCount walks baseDir (optionally scoped to subdirs listed in subdirsFile)
+// and returns the total object count and byte size without writing any index files.
+// If subdirsFile is empty, the entire baseDir tree is walked.
+// concurrency controls how many subdirs are walked in parallel (0 → NumCPU, capped at 128).
+func WalkDirAndCount(baseDir, subdirsFile string, concurrency int) (*DirStats, error) {
+	if concurrency <= 0 {
+		concurrency = runtime.NumCPU() / 2
+		if concurrency > 128 {
+			concurrency = 128
+		}
+	}
+
+	var objects, bytes int64
+
+	walkOne := func(root string) error {
+		return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				log.Warningf("WalkDirAndCount: cannot access %s: %v", path, err)
+				return err
+			}
+			if d.Type()&os.ModeSymlink != 0 || d.IsDir() {
+				return nil
+			}
+			info, err := d.Info()
+			if err != nil {
+				log.Warningf("WalkDirAndCount: cannot stat %s: %v", path, err)
+				return err
+			}
+			atomic.AddInt64(&objects, 1)
+			atomic.AddInt64(&bytes, info.Size())
+			return nil
+		})
+	}
+
+	if subdirsFile == "" {
+		// No subdir file — walk baseDir directly (single-threaded is fine here).
+		if err := walkOne(baseDir); err != nil {
+			return nil, err
+		}
+		return &DirStats{Objects: objects, Bytes: bytes}, nil
+	}
+
+	f, err := os.Open(subdirsFile)
+	if err != nil {
+		return nil, fmt.Errorf("WalkDirAndCount: open subdirsFile: %w", err)
+	}
+	defer f.Close()
+
+	subdirCh := make(chan string, concurrency*2)
+	var wg sync.WaitGroup
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for subdir := range subdirCh {
+				root := filepath.Join(baseDir, subdir)
+				if _, e := os.Stat(root); os.IsNotExist(e) {
+					continue
+				}
+				if e := walkOne(root); e != nil {
+					log.Errorf("WalkDirAndCount: walk %s: %v", root, e)
+				}
+			}
+		}()
+	}
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			subdirCh <- line
+		}
+	}
+	close(subdirCh)
+	wg.Wait()
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("WalkDirAndCount: read subdirsFile: %w", err)
+	}
+
+	return &DirStats{Objects: objects, Bytes: bytes}, nil
+}
 
 func GetFilesystemType(path string) (string, error) {
 	absPath, err := filepath.Abs(path)
@@ -155,7 +246,7 @@ func FindFiles(baseDir, subdirsFile string, concurrency int, outputDir, outputPr
 						if err != nil {
 							// TODO: record it
 							log.Warningf("Warning: cannot access %s: %v", path, err)
-							return nil
+							return err
 						}
 
 						// Skip directories and symlinks
