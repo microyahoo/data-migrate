@@ -1,22 +1,19 @@
 report_config:
   format: csv # csv, md or html
-  bucket: test
   s3_config:
     access_key: testy
     secret_key: testy
     region: us-east-1
     endpoint: http://10.3.8.31:80
+    bucket: test
     skipSSLverify: true
 
 global_config:
-  ultra_large_scale: false   # indicate ultra-large-scale task
-  server_side_listing: false # Whether to list files on server side
+  ultra_large_scale: true # indicate ultra-large-scale task
+  server_side_listing: true # Whether to list files on server side
 
   feishu_url: "feishu_url"
-  source_fs_types:
-    - xfs
-    - gpfs
-  target_fs_types:
+  fs_types:
     - xfs
     - gpfs
   tasks_file: deploy/data_sources.test.txt
@@ -29,9 +26,4 @@ global_config:
   # --checkers 128 --transfers 128 --size-only --local-no-set-modtime --log-level INFO --log-file
   rclone_flags:
     checkers: 64
-    transfers: 64
     log_level: INFO
-    local_no_set_modtime: true
-    size_only: true
-    update: false
-    dryrun: true

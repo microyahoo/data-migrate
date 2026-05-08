@@ -40,7 +40,7 @@ func (s *FeishuCardSender) Send(content string) error {
 			"header": M{
 				"title": M{
 					"tag":     "plain_text",
-					"content": "迁移任务状态",
+					"content": "容量统计任务状态",
 				},
 				"subtitle": M{
 					"tag":     "plain_text",
