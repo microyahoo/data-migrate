@@ -105,7 +105,7 @@ func (s *Server) Start(serverPort int) error {
 	for {
 		select {
 		case <-s.done:
-			log.Infof("All data capacity statistics tasks done!")
+			log.Infof("All data delete tasks done!")
 			return nil
 		default:
 			conn, err := listener.Accept()
@@ -320,18 +320,18 @@ func (s *Server) handleClient(conn net.Conn, clientID string) {
 		result.ClientID = clientID
 		if result.Success {
 			if s.serverSideListing {
-				log.Infof("The capacity statistics for %s of task(%d/%d) with file from %s has been completed successfully",
+				log.Infof("The delete for %s of task(%d/%d) with file from %s has been completed successfully",
 					taskToSend.SourceDir, taskToSend.ID, taskToSend.SubTaskID, taskToSend.FileFrom)
 			} else {
-				log.Infof("The capacity statistics for %s of task(%d) has been completed successfully",
+				log.Infof("The delete for %s of task(%d) has been completed successfully",
 					taskToSend.SourceDir, taskToSend.ID)
 			}
 		} else {
 			if s.serverSideListing {
-				log.Errorf("failed to count capacity for %s of task(%d/%d) with file from %s", taskToSend.SourceDir,
+				log.Errorf("failed to delete %s of task(%d/%d) with file from %s", taskToSend.SourceDir,
 					taskToSend.ID, taskToSend.SubTaskID, taskToSend.FileFrom)
 			} else {
-				log.Errorf("failed to count capacity for %s of task(%d)", taskToSend.SourceDir, taskToSend.ID)
+				log.Errorf("failed to delete %s of task(%d)", taskToSend.SourceDir, taskToSend.ID)
 			}
 		}
 		s.completed <- result
@@ -344,9 +344,6 @@ func (s *Server) handleResults() {
 		taskEndTimeMap   = make(map[int]time.Time)
 		taskCounterMap   = make(map[int]int)
 		failedTaskMap    = make(map[int][]string)
-		taskObjectsMap   = make(map[int]int64)
-		taskBytesMap     = make(map[int]int64)
-		taskSizeMap      = make(map[int]string)
 	)
 	for result := range s.completed {
 		var lastResult *common.TaskResult
@@ -360,14 +357,6 @@ func (s *Server) handleResults() {
 			if taskEndTimeMap[result.TaskID].Before(result.EndTime) {
 				taskEndTimeMap[result.TaskID] = result.EndTime
 			}
-		}
-		if _, ok := taskObjectsMap[result.TaskID]; !ok {
-			taskObjectsMap[result.TaskID] = result.Objects
-			taskBytesMap[result.TaskID] = result.Bytes
-			taskSizeMap[result.TaskID] = result.Size
-		} else {
-			taskObjectsMap[result.TaskID] += result.Objects
-			taskBytesMap[result.TaskID] += result.Bytes
 		}
 		if !result.Success {
 			atomic.AddUint64(&s.failedCounter, 1)
@@ -395,9 +384,6 @@ func (s *Server) handleResults() {
 					StartTime: taskStartTimeMap[result.TaskID],
 					EndTime:   taskEndTimeMap[result.TaskID],
 					Duration:  taskEndTimeMap[result.TaskID].Sub(taskStartTimeMap[result.TaskID]),
-					Size:      common.ByteSize(uint64(taskBytesMap[result.TaskID])),
-					Objects:   taskObjectsMap[result.TaskID],
-					Bytes:     taskBytesMap[result.TaskID],
 				}
 				failedMessages := failedTaskMap[result.TaskID]
 				if len(failedMessages) > 0 {
@@ -438,10 +424,10 @@ func (s *Server) handleResults() {
 			var content string
 			if s.serverSideListing {
 				if lastResult != nil {
-					content = NewFormatter().FormatMigrationMessage(*lastResult)
+					content = NewFormatter().FormatDeleteMessage(*lastResult)
 				}
 			} else {
-				content = NewFormatter().FormatMigrationMessage(result)
+				content = NewFormatter().FormatDeleteMessage(result)
 			}
 			err := common.SendFeishuCard(
 				s.config.GlobalConfig.FeishuURL,
@@ -514,9 +500,6 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 			"client id",
 			"duration",
 			"success",
-			"objects",
-			"bytes",
-			"size",
 			"split pattern",
 			"split files",
 			"file from",
@@ -536,9 +519,6 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 		result.ClientID,
 		fmt.Sprintf("%s", result.Duration),
 		fmt.Sprintf("%t", result.Success),
-		fmt.Sprintf("%d", result.Objects),
-		fmt.Sprintf("%d", result.Bytes),
-		result.Size,
 		result.SplitPattern,
 		fmt.Sprintf("%d", result.SplitFiles),
 		result.FileFrom,
@@ -555,20 +535,20 @@ func (s *Server) writeResultToCSV(result common.TaskResult) {
 }
 
 func (s *Server) getCSVFileHandle() (*os.File, bool, error) {
-	file, err := os.OpenFile("data_migrate_results.csv", os.O_APPEND|os.O_WRONLY, 0755)
+	file, err := os.OpenFile("data_delete_results.csv", os.O_APPEND|os.O_WRONLY, 0755)
 	if err == nil {
 		return file, false, nil
 	}
-	file, err = os.OpenFile("/tmp/data_migrate_results.csv", os.O_APPEND|os.O_WRONLY, 0755)
+	file, err = os.OpenFile("/tmp/data_delete_results.csv", os.O_APPEND|os.O_WRONLY, 0755)
 	if err == nil {
 		return file, false, nil
 	}
 
-	file, err = os.OpenFile("data_migrate_results.csv", os.O_WRONLY|os.O_CREATE, 0755)
+	file, err = os.OpenFile("data_delete_results.csv", os.O_WRONLY|os.O_CREATE, 0755)
 	if err == nil {
 		return file, true, nil
 	}
-	file, err = os.OpenFile("/tmp/data_migrate_results.csv", os.O_WRONLY|os.O_CREATE, 0755)
+	file, err = os.OpenFile("/tmp/data_delete_results.csv", os.O_WRONLY|os.O_CREATE, 0755)
 	if err == nil {
 		return file, true, nil
 	}
@@ -584,8 +564,8 @@ func (s *Server) generateResults(results []common.TaskResult, duration time.Dura
 		format = s.config.ReportConfig.Format
 	}
 	var timestamp = time.Now().UnixMilli()
-	outputFile := fmt.Sprintf("/tmp/data_migrate_results_%d.%s", timestamp, format)
-	log.Infof("Start to generate data migration results to %s", outputFile)
+	outputFile := fmt.Sprintf("/tmp/data_delete_results_%d.%s", timestamp, format)
+	log.Infof("Start to generate data delete results to %s", outputFile)
 	{
 		f, err := os.Create(outputFile)
 		if err != nil {
@@ -602,9 +582,6 @@ func (s *Server) generateResults(results []common.TaskResult, duration time.Dura
 			"client id",
 			"duration",
 			"success",
-			"objects",
-			"bytes",
-			"size",
 			"split pattern",
 			"split files",
 			"file from",
@@ -619,9 +596,6 @@ func (s *Server) generateResults(results []common.TaskResult, duration time.Dura
 				result.ClientID,
 				fmt.Sprintf("%s", result.Duration),
 				fmt.Sprintf("%t", result.Success),
-				fmt.Sprintf("%d", result.Objects),
-				fmt.Sprintf("%d", result.Bytes),
-				result.Size,
 				result.SplitPattern,
 				fmt.Sprintf("%d", result.SplitFiles),
 				result.FileFrom,
@@ -663,7 +637,7 @@ func (s *Server) generateResults(results []common.TaskResult, duration time.Dura
 	}
 
 	s3Config := s.config.ReportConfig.S3Config
-	log.Infof("Start to upload data migration results to s3 endpoint %s", s3Config.Endpoint)
+	log.Infof("Start to upload data delete results to s3 endpoint %s", s3Config.Endpoint)
 	ctx := context.Background()
 	client, e := common.NewS3Client(ctx, s3Config.Endpoint, s3Config.AccessKey, s3Config.SecretKey,
 		s3Config.Region, s3Config.SkipSSLVerify)
@@ -676,7 +650,7 @@ func (s *Server) generateResults(results []common.TaskResult, duration time.Dura
 		log.WithError(e).Warning("Unable to open report file")
 		return
 	}
-	key := fmt.Sprintf("rclone/reports/data_migrate_results_%d.%s", timestamp, format)
+	key := fmt.Sprintf("rclone/reports/data_delete_results_%d.%s", timestamp, format)
 	defer f.Close()
 	_, e = client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s3Config.Bucket,
@@ -707,14 +681,14 @@ func (f *Formatter) writeLine(builder *strings.Builder, label, value string) {
 	builder.WriteString(fmt.Sprintf("%s: %s", label, value) + "\n")
 }
 
-func (f *Formatter) FormatMigrationMessage(result common.TaskResult) string {
+func (f *Formatter) FormatDeleteMessage(result common.TaskResult) string {
 	var builder strings.Builder
 
 	status := "成功"
 	if !result.Success {
 		status = "失败"
 	}
-	titleLine := fmt.Sprintf("容量统计任务状态: %s", status)
+	titleLine := fmt.Sprintf("删除任务状态: %s", status)
 	builder.WriteString(titleLine + "\n")
 
 	separator := strings.Repeat(f.SeparatorChar, f.SeparatorLen)
@@ -722,9 +696,6 @@ func (f *Formatter) FormatMigrationMessage(result common.TaskResult) string {
 
 	f.writeLine(&builder, "source dir", result.SourceDir)
 	f.writeLine(&builder, "duration", fmt.Sprintf("%s", result.Duration))
-	f.writeLine(&builder, "objects", fmt.Sprintf("%d", result.Objects))
-	f.writeLine(&builder, "bytes", fmt.Sprintf("%d", result.Bytes))
-	f.writeLine(&builder, "size", result.Size)
 	f.writeLine(&builder, "task id", fmt.Sprintf("%d", result.TaskID))
 	f.writeLine(&builder, "client id", result.ClientID)
 	f.writeLine(&builder, "split pattern", result.SplitPattern)
@@ -740,7 +711,7 @@ func (f *Formatter) FormatMigrationMessage(result common.TaskResult) string {
 func (f *Formatter) FormatTotalResults(total, success, failed int, key string, duration time.Duration) string {
 	var builder strings.Builder
 
-	titleLine := fmt.Sprintf("容量统计汇总")
+	titleLine := fmt.Sprintf("删除任务汇总")
 	builder.WriteString(titleLine + "\n")
 
 	separator := strings.Repeat(f.SeparatorChar, f.SeparatorLen)

@@ -9,13 +9,13 @@ report_config:
     skipSSLverify: true
 
 global_config:
-  ultra_large_scale: true # indicate ultra-large-scale task
-  server_side_listing: true # Whether to list files on server side
+  ultra_large_scale: false   # indicate ultra-large-scale task
+  server_side_listing: false # Whether to list files on server side
 
-  feishu_url: "feishu_url"
+  feishu_url: "https://open.feishu.cn/open-apis/bot/v2/hook/639b5f28-1074-456b-b4af-52d43e0afae6"
   fs_types:
     - yrfs_ec
-  tasks_file: deploy/data_sources.txt
+  tasks_file: data_sources.txt
 
   file_list_dir: /mnt/yrfs/public-data/user/zhengliang/
   file_list_dir_fs_type: yrfs_ec
@@ -26,3 +26,5 @@ global_config:
   rclone_flags:
     checkers: 64
     log_level: INFO
+    dry_run: true
+    rmdirs: true

@@ -24,7 +24,7 @@ func main() {
 
 func newCommand() *cobra.Command {
 	cmds := &cobra.Command{
-		Use: "data-capacity-statistics-server",
+		Use: "data-delete-server",
 		Run: func(cmd *cobra.Command, args []string) {
 			run()
 		},
@@ -60,7 +60,7 @@ func run() {
 		log.SetLevel(log.InfoLevel)
 	}
 	log.Debugf("viper settings: %+v", viper.AllSettings())
-	log.Debugf("data-capacity-statistics server configFile: %s, serverPort: %d", configFile, serverPort)
+	log.Debugf("data-delete-server configFile: %s, serverPort: %d", configFile, serverPort)
 
 	server, err := server.NewServer(configFile)
 	if err != nil {
