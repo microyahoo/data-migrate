@@ -1,7 +1,5 @@
 /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1/
 /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_2/
 /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_3/
-/root/go/src/deeproute/ops-kubeconfig/
-/var/log/shell_log/
-/etc/udev
-/root/go/src/github.com/rclone
+/var/log/shell_log/ /tmp/shell_log.txt
+/root/go/src/github.com/rclone.bak

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -36,6 +35,12 @@ type GlobalConfiguration struct {
 type RcloneFlags struct {
 	Checkers int    `yaml:"checkers" json:"checkers"`
 	LogLevel string `yaml:"log_level" json:"log_level"`
+	// DryRun, when true, passes --dry-run to rclone delete so it only prints
+	// what would be deleted without actually removing anything.
+	DryRun bool `yaml:"dry_run" json:"dry_run"`
+	// Rmdirs, when true, passes --rmdirs to rclone delete so empty directories
+	// are removed after their contents are deleted.
+	Rmdirs bool `yaml:"rmdirs" json:"rmdirs"`
 }
 
 // S3Configuration contains all information to connect to a certain S3 endpoint
@@ -281,44 +286,4 @@ func ParseTaskFile(conf *MigrationConf) ([]*MigrationTask, error) {
 	}
 
 	return tasks, nil
-}
-
-// RcloneSize parse the result of 'rclone size'
-type RcloneSize struct {
-	Objects int64  // objects
-	Size    string // size, eg. 10 GB
-	Bytes   int64  // bytes
-}
-
-func ParseRcloneSize(output string) (*RcloneSize, error) {
-	// Total objects: 231
-	// Total size: 695.903 MiB (729707029 Byte)
-	var (
-		objects int64
-		size    string
-		bytes   int64
-	)
-	// - Total objects: 348
-	// - Total objects: 1k (1000)
-	// - Total objects: 2.5M (2500000)
-	// objRegex := regexp.MustCompile(`Total objects:\s*(\d+)`)
-	objRegex := regexp.MustCompile(`Total objects:\s*(?:[\d\.]+[kMGTPE]?\s*\()?(\d+)\)?`)
-	objMatch := objRegex.FindStringSubmatch(output)
-	if len(objMatch) >= 2 {
-		fmt.Sscanf(objMatch[1], "%d", &objects)
-	}
-
-	// match size and bytes
-	sizeRegex := regexp.MustCompile(`Total size:\s*([\d\.]+\s+\w+)\s+\((\d+)\s+Bytes?\)`)
-	sizeMatch := sizeRegex.FindStringSubmatch(output)
-	if len(sizeMatch) > 2 {
-		size = sizeMatch[1]                    // 44.882 GiB
-		fmt.Sscanf(sizeMatch[2], "%d", &bytes) // 48191611197
-	}
-
-	if size == "" {
-		return nil, fmt.Errorf("failed to parse rclone size")
-	}
-
-	return &RcloneSize{Objects: objects, Size: size, Bytes: bytes}, nil
 }

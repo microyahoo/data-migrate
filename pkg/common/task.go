@@ -24,7 +24,4 @@ type TaskResult struct {
 	FileFrom  string    `json:"file_from"`
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
-	Objects   int64     `json:"objects"`
-	Size      string    `json:"size"`
-	Bytes     int64     `json:"bytes"`
 }
