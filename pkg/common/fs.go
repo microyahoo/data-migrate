@@ -66,7 +66,7 @@ func getFilesystemTypeLinux(path string) (string, error) {
 		return name, nil
 	}
 
-	return fmt.Sprintf("unknown (0x%x)", fsType), nil
+	return "", fmt.Errorf("unknown (0x%x)", fsType)
 }
 
 // /mnt/csi-data-gfs/lidar/deeproute_all/samples/camera_1/ /mnt/yrfs/public-data/training/samples/camera_1/ /mnt/core-data/data/3d_object_gt/data_sync/results/sync_3d/mnt#csi-data-gfs#lidar#deeproute_all#samples#camera_1#.txt
